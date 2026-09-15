@@ -1,0 +1,31 @@
+import type { KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
+import { type Component, type Focusable, type TUI } from "@earendil-works/pi-tui";
+import type { TaskState } from "../state.js";
+export declare class WorksDashboard implements Component, Focusable {
+    private readonly tui;
+    private readonly theme;
+    private readonly keybindings;
+    private readonly state;
+    private readonly close;
+    focused: boolean;
+    private selectedKey;
+    private scrollOffset;
+    private detailOffset;
+    private detailPageSize;
+    private detailsVisible;
+    private message;
+    private disposed;
+    private readonly refreshTimer;
+    constructor(tui: TUI, theme: Theme, keybindings: KeybindingsManager, state: TaskState, close: () => void);
+    render(width: number): string[];
+    handleInput(data: string): void;
+    invalidate(): void;
+    dispose(): void;
+    private items;
+    private syncSelection;
+    private select;
+    private keepSelectionVisible;
+    private renderRow;
+    private renderDetails;
+    private renderFooter;
+}

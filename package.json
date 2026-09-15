@@ -1,0 +1,61 @@
+{
+  "name": "pi-tasks",
+  "version": "0.1.0",
+  "description": "Session-scoped work and todo tracking for Pi.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "tasks",
+    "todos",
+    "work-tracking"
+  ],
+  "files": [
+    "dist/",
+    "docs/USAGE_GUIDE.md",
+    "docs/REFERENCE.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.84.3",
+    "@earendil-works/pi-tui": "*",
+    "@earendil-works/pi-ai": "*",
+    "typebox": "*"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc",
+    "audit:production": "npm audit --omit=dev --audit-level=moderate",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --fix src/"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.13",
+    "@earendil-works/pi-ai": "0.84.3",
+    "@earendil-works/pi-coding-agent": "0.84.3",
+    "@earendil-works/pi-tui": "0.84.3",
+    "@types/node": "^26.1.2",
+    "typebox": "1.3.16",
+    "typescript": "^7.0.2"
+  },
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  }
+}

@@ -37,7 +37,9 @@ TodoDelete taskId="T1"
 
 ## TUI
 
-The panel defaults to a floating top-right layout and does not take keyboard focus. It hides on small terminals. Use `/works-panel widget` for the earlier right-aligned layout above the editor, `/works-panel floating` to return to the floating layout, or `/works-panel off` to hide it.
+The panel defaults to a floating top-right layout and does not take keyboard focus. It hides on small terminals. When the panel has more rows than fit, run `/works-panel browse`; then use Up/Down, Page Up/Page Down, Home, or End to scroll through every work and todo. Press Escape or Ctrl+C to return focus to the editor.
+
+Use `/works-panel widget` for a right-aligned layout above the editor that renders every row, `/works-panel floating` to return to the floating layout, or `/works-panel off` to hide it.
 
 Run `/works` for full details:
 

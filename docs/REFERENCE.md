@@ -30,6 +30,6 @@ The guidance is not added when the tracking tools have been removed from the act
 
 ## Interfaces
 
-The compact panel defaults to a non-capturing floating overlay anchored at the top-right. It shows work and todo names, status icons, and completion counts, and hides on terminals narrower than 90 columns or shorter than 18 rows. Because Pi treats any persistent overlay as active, the floating mode can block display-mode changes. `/works-panel widget` switches to a right-aligned widget above the editor, and `/works-panel off` hides it.
+The compact panel defaults to a non-capturing floating overlay anchored at the top-right. It shows work and todo names, status icons, completion counts, and a visible row range when content exceeds the terminal-aware viewport. It hides on terminals narrower than 90 columns or shorter than 18 rows. `/works-panel browse` focuses the floating panel; Up/Down, Page Up/Page Down, Home, and End scroll its rows, while Escape or Ctrl+C returns focus to the editor. Because Pi treats any persistent overlay as active, the floating mode can block display-mode changes. `/works-panel widget` switches to a right-aligned widget above the editor and renders all rows, while `/works-panel off` hides it.
 
 `/works` opens a top-centered detailed overlay. Configured selection keys choose records, configured Page Up and Page Down keys scroll long details, the configured confirmation key toggles details, and the configured cancel key closes it.

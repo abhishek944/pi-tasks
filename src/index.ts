@@ -15,12 +15,17 @@ export default function tasksExtension(pi: ExtensionAPI): void {
   registerTrackingGuidance(pi);
   registerWorksCommand(pi, state);
   pi.registerCommand("works-panel", {
-    description: "Set the works panel to floating, widget, or off",
+    description: "Set the works panel mode or browse its rows",
     handler: async (args, ctx) => {
       const requested = args.trim();
+      if (requested === "browse") {
+        const error = panel?.browse();
+        if (error) ctx.ui.notify(error, "warning");
+        return;
+      }
       const mode = requested === "floating" || requested === "widget" || requested === "off" ? requested : undefined;
       if (!mode) {
-        ctx.ui.notify("Usage: /works-panel floating|widget|off", "info");
+        ctx.ui.notify("Usage: /works-panel floating|widget|off|browse", "info");
         return;
       }
       panel?.setMode(mode);

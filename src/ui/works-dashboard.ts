@@ -1,5 +1,15 @@
-import type { KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, type Focusable, type TUI, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { copyToClipboard, type KeybindingsManager, type Theme } from "@earendil-works/pi-coding-agent";
+import {
+  type Component,
+  type Focusable,
+  matchesKey,
+  type TUI,
+  type TuiMouseEvent,
+  type TuiMouseEventResult,
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
 import type { TaskState } from "../state.js";
 import { safeMultiline, safeSingleLine } from "../text.js";
 import type { Todo, WorkWithTodos } from "../types.js";
@@ -11,6 +21,8 @@ type DashboardItem =
 
 const CHROME_LINES = 8;
 
+type HeaderHitRegion = { start: number; end: number };
+
 export class WorksDashboard implements Component, Focusable {
   focused = false;
   private selectedKey: string | undefined;
@@ -19,6 +31,11 @@ export class WorksDashboard implements Component, Focusable {
   private detailPageSize = 1;
   private detailsVisible = true;
   private message = "Ready. Select an item; Escape closes.";
+  private messageColor: "warning" | "success" | "error" = "warning";
+  private copying = false;
+  private minimized = false;
+  private copyHitRegion: HeaderHitRegion | undefined;
+  private toggleHitRegion: HeaderHitRegion | undefined;
   private disposed = false;
   private readonly refreshTimer: ReturnType<typeof setInterval>;
 
@@ -38,12 +55,21 @@ export class WorksDashboard implements Component, Focusable {
   render(width: number): string[] {
     const dialogWidth = Math.max(1, width);
     const innerWidth = Math.max(1, dialogWidth - 2);
-    const items = this.items();
+    const works = this.state.listWorks();
+    const todos = works.flatMap((work) => work.tasks);
+    const header = this.renderHeader(innerWidth, works.length, todos.length);
+    if (this.minimized) {
+      return [
+        border(innerWidth, "top", this.theme),
+        frame(header, innerWidth, this.theme),
+        border(innerWidth, "bottom", this.theme),
+      ];
+    }
+
+    const items = this.items(works);
     this.syncSelection(items);
     const terminalRows = this.tui.terminal.rows || process.stdout.rows || 30;
     const dialogHeight = Math.max(8, Math.min(36, Math.floor(terminalRows * 0.82)));
-    const works = this.state.listWorks();
-    const todos = works.flatMap((work) => work.tasks);
     const activeWorks = works.filter((work) => work.status === "active").length;
     const completedTodos = todos.filter((todo) => todo.status === "completed").length;
     const summary = `${activeWorks}/${works.length} works active · ${completedTodos}/${todos.length} todos completed · session scoped`;
@@ -58,12 +84,12 @@ export class WorksDashboard implements Component, Focusable {
 
     return [
       border(innerWidth, "top", this.theme),
-      frame(this.theme.fg("accent", this.theme.bold("Works · session work and todos")), innerWidth, this.theme),
+      frame(header, innerWidth, this.theme),
       frame(this.theme.fg("dim", summary), innerWidth, this.theme),
       rule(innerWidth, this.theme),
       ...[...rows, ...details].map((line) => frame(line, innerWidth, this.theme)),
       rule(innerWidth, this.theme),
-      frame(this.theme.fg("warning", truncateToWidth(this.message, innerWidth, "")), innerWidth, this.theme),
+      frame(this.theme.fg(this.messageColor, truncateToWidth(this.message, innerWidth, "")), innerWidth, this.theme),
       frame(this.renderFooter(innerWidth), innerWidth, this.theme),
       border(innerWidth, "bottom", this.theme),
     ];
@@ -78,6 +104,16 @@ export class WorksDashboard implements Component, Focusable {
       this.close();
       return;
     }
+    if (matchesKey(data, "c")) {
+      void this.copyAllAsMarkdown();
+      return;
+    }
+    if (matchesKey(data, "m")) {
+      this.toggleMinimized();
+      return;
+    }
+    if (this.minimized) return;
+    this.messageColor = "warning";
     if (this.keybindings.matches(data, "tui.select.up")) {
       this.select(items, index - 1);
     } else if (this.keybindings.matches(data, "tui.select.down")) {
@@ -96,6 +132,19 @@ export class WorksDashboard implements Component, Focusable {
     this.tui.requestRender();
   }
 
+  handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+    if (this.disposed || event.type !== "click" || event.button !== "left" || event.y !== 1) return undefined;
+    if (this.isHit(event.x, this.toggleHitRegion)) {
+      this.toggleMinimized();
+      return { handled: true, focus: true, render: true };
+    }
+    if (this.isHit(event.x, this.copyHitRegion)) {
+      void this.copyAllAsMarkdown();
+      return { handled: true, focus: true, render: true };
+    }
+    return undefined;
+  }
+
   invalidate(): void {}
 
   dispose(): void {
@@ -104,9 +153,9 @@ export class WorksDashboard implements Component, Focusable {
     clearInterval(this.refreshTimer);
   }
 
-  private items(): DashboardItem[] {
+  private items(works = this.state.listWorks()): DashboardItem[] {
     const items: DashboardItem[] = [];
-    for (const work of this.state.listWorks()) {
+    for (const work of works) {
       items.push({ key: `work:${work.workId}`, kind: "work", work });
       for (const todo of work.tasks) items.push({ key: `todo:${todo.taskId}`, kind: "todo", todo, workName: work.workName });
     }
@@ -164,8 +213,109 @@ export class WorksDashboard implements Component, Focusable {
     ].slice(0, budget);
   }
 
+  private renderHeader(width: number, workCount: number, todoCount: number): string {
+    const titleText = this.minimized
+      ? `Works (${workCount} work${workCount === 1 ? "" : "s"}, ${todoCount} todo${todoCount === 1 ? "" : "s"})`
+      : "Works · session work and todos";
+    const title = this.theme.fg("accent", this.theme.bold(titleText));
+    const copyAction = this.copying
+      ? this.theme.fg("dim", "[Copying…]")
+      : this.theme.fg("accent", this.theme.bold("[C Copy]"));
+    const toggleLabel = this.minimized ? "[M Maximize]" : "[M Minimize]";
+    const toggleAction = this.theme.fg("accent", this.theme.bold(toggleLabel));
+    const actionsWidth = visibleWidth(copyAction) + 1 + visibleWidth(toggleAction);
+    const titleWidth = Math.max(0, width - actionsWidth - 1);
+    const shownTitle = truncateToWidth(title, titleWidth, "");
+    const gap = " ".repeat(Math.max(1, width - visibleWidth(shownTitle) - actionsWidth));
+    const copyStart = 1 + visibleWidth(shownTitle) + gap.length;
+    this.copyHitRegion = { start: copyStart, end: copyStart + visibleWidth(copyAction) };
+    const toggleStart = this.copyHitRegion.end + 1;
+    this.toggleHitRegion = { start: toggleStart, end: toggleStart + visibleWidth(toggleAction) };
+    return `${shownTitle}${gap}${copyAction} ${toggleAction}`;
+  }
+
+  private toggleMinimized(): void {
+    this.minimized = !this.minimized;
+    if (!this.minimized) {
+      this.message = "Dashboard maximized.";
+      this.messageColor = "warning";
+    }
+    this.tui.requestRender();
+  }
+
+  private isHit(x: number, region: HeaderHitRegion | undefined): boolean {
+    return region !== undefined && x >= region.start && x < region.end;
+  }
+
+  private async copyAllAsMarkdown(): Promise<void> {
+    if (this.copying) return;
+    this.copying = true;
+    this.message = "Copying all works and todos as Markdown…";
+    this.messageColor = "warning";
+    this.tui.requestRender();
+
+    const works = this.state.listWorks();
+    try {
+      await copyToClipboard(formatWorksMarkdown(works));
+      const todoCount = works.reduce((total, work) => total + work.tasks.length, 0);
+      this.message = `Copied ${works.length} work${works.length === 1 ? "" : "s"} and ${todoCount} todo${todoCount === 1 ? "" : "s"} as Markdown.`;
+      this.messageColor = "success";
+    } catch (error) {
+      const reason = error instanceof Error && error.message ? ` ${safeSingleLine(error.message)}` : "";
+      this.message = `Could not copy works and todos.${reason}`;
+      this.messageColor = "error";
+    } finally {
+      this.copying = false;
+      if (!this.disposed) this.tui.requestRender();
+    }
+  }
+
   private renderFooter(width: number): string {
-    const text = "configured ↑/↓ select · PgUp/PgDn scroll details · confirm toggles · cancel closes";
+    const text = "C copy all · M minimize · configured ↑/↓ select · PgUp/PgDn scroll details · confirm toggles · cancel closes";
     return truncateToWidth(this.theme.fg("muted", text), width, "");
   }
+}
+
+function formatWorksMarkdown(works: WorkWithTodos[]): string {
+  const lines = ["# Works and Todos", ""];
+  if (works.length === 0) return `${lines.join("\n")}\n_No works or todos in this session._\n`;
+
+  for (const work of works) {
+    lines.push(
+      `## ${work.workId} — ${escapeMarkdownInline(safeSingleLine(work.workName))}`,
+      "",
+      `**Status:** ${work.status}`,
+      "",
+      "### Details",
+      "",
+      markdownBody(work.workInfo),
+      "",
+      "### Todos",
+      "",
+    );
+    if (work.tasks.length === 0) {
+      lines.push("_No todos._", "");
+      continue;
+    }
+    for (const todo of work.tasks) {
+      lines.push(
+        `#### ${todo.taskId} — ${escapeMarkdownInline(safeSingleLine(todo.taskName))}`,
+        "",
+        `**Status:** ${todo.status}`,
+        "",
+        markdownBody(todo.taskInfo),
+        "",
+      );
+    }
+  }
+
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+function markdownBody(value: string): string {
+  return safeMultiline(value).join("\n").trim() || "_No details provided._";
+}
+
+function escapeMarkdownInline(value: string): string {
+  return value.replace(/([-\\`*_[\]{}()<>#+.!|])/g, "\\$1");
 }

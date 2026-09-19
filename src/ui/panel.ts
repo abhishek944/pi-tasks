@@ -1,5 +1,5 @@
 import type { ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, type Focusable, Key, matchesKey, type OverlayHandle, type TUI, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { type Component, type OverlayHandle, type TUI, type TuiMouseEvent, type TuiMouseEventResult, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { TaskState } from "../state.js";
 import type { TodoStatus, WorkStatus } from "../types.js";
 
@@ -30,17 +30,6 @@ export class TasksPanelHost {
     return this.mode;
   }
 
-  browse(): string | undefined {
-    if (this.mode !== "floating") return "Use /works-panel floating before browsing the panel.";
-    if (!this.tui || !this.panel || !this.handle) return "The Works panel is not available.";
-    const columns = this.tui.terminal.columns || process.stdout.columns || 0;
-    const rows = this.tui.terminal.rows || process.stdout.rows || 0;
-    if (columns < 90 || rows < 18) return "The terminal is too small to browse the Works panel.";
-    this.handle.focus();
-    this.tui.requestRender();
-    return undefined;
-  }
-
   update(): void {
     this.panel?.invalidate();
     this.tui?.requestRender();
@@ -69,7 +58,7 @@ export class TasksPanelHost {
 
     ui.setWidget("pi-tasks-panel-host", (tui, theme) => {
       this.tui = tui;
-      this.panel = new TasksPanel(tui, this.state, theme, "floating", () => this.handle?.unfocus());
+      this.panel = new TasksPanel(tui, this.state, theme, "floating");
       this.handle = tui.showOverlay(this.panel, {
         anchor: "top-right",
         width: "42%",
@@ -93,18 +82,17 @@ export class TasksPanelHost {
   }
 }
 
-class TasksPanel implements Component, Focusable {
-  focused = false;
+class TasksPanel implements Component {
   private scrollOffset = 0;
   private pageSize = 1;
   private contentLength = 0;
+  private followTail = true;
 
   constructor(
     private readonly tui: TUI,
     private readonly state: TaskState,
     private readonly theme: Theme,
     private readonly placement: "floating" | "widget",
-    private readonly releaseFocus?: () => void,
   ) {}
 
   render(width: number): string[] {
@@ -124,15 +112,22 @@ class TasksPanel implements Component, Focusable {
     this.contentLength = content.length;
     const terminalRows = this.tui.terminal.rows || process.stdout.rows || 30;
     this.pageSize = this.placement === "widget" ? Math.max(1, content.length) : Math.max(1, Math.floor(terminalRows * 0.48) - 4);
-    this.clampScrollOffset();
+    if (this.placement === "widget") {
+      this.scrollOffset = 0;
+      this.followTail = true;
+    } else if (this.followTail) {
+      this.scrollOffset = this.maxScrollOffset();
+    } else {
+      this.clampScrollOffset();
+    }
     const shown = content.slice(this.scrollOffset, this.scrollOffset + this.pageSize);
-    const hasOverflow = content.length > shown.length;
+    const hasOverflow = content.length > this.pageSize;
     const range = `${this.scrollOffset + 1}–${this.scrollOffset + shown.length}/${content.length}`;
     let title = "Works";
-    if (this.placement === "floating" && (hasOverflow || this.scrollOffset > 0)) {
-      title += this.focused ? ` · ${range} · ↑↓ PgUp/PgDn · Esc` : ` · ${range} · /works-panel browse`;
-    } else if (this.focused) {
-      title += " · Esc to return";
+    if (this.placement === "floating" && hasOverflow) {
+      title += this.tui.mode === "fullscreen"
+        ? ` · ${range} · wheel to scroll`
+        : ` · ${range} · latest · /works for all`;
     }
 
     const lines = [
@@ -145,34 +140,32 @@ class TasksPanel implements Component, Focusable {
     return lines.map((line) => `${leftPad}${line}`);
   }
 
-  handleInput(data: string): void {
-    if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
-      this.releaseFocus?.();
-      this.tui.requestRender();
-      return;
-    }
-    if (matchesKey(data, Key.up)) this.scrollBy(-1);
-    else if (matchesKey(data, Key.down)) this.scrollBy(1);
-    else if (matchesKey(data, Key.pageUp)) this.scrollBy(-this.pageSize);
-    else if (matchesKey(data, Key.pageDown)) this.scrollBy(this.pageSize);
-    else if (matchesKey(data, Key.home)) this.scrollTo(0);
-    else if (matchesKey(data, Key.end)) this.scrollTo(this.contentLength);
+  handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+    if (this.placement !== "floating" || event.type !== "wheel" || !event.wheelDelta) return undefined;
+    const changed = this.scrollBy(event.wheelDelta < 0 ? -1 : 1);
+    return { handled: true, render: changed };
   }
 
   invalidate(): void {}
 
-  private scrollBy(lines: number): void {
-    this.scrollTo(this.scrollOffset + lines);
+  private scrollBy(lines: number): boolean {
+    return this.scrollTo(this.scrollOffset + lines);
   }
 
-  private scrollTo(offset: number): void {
-    this.scrollOffset = offset;
-    this.clampScrollOffset();
-    this.tui.requestRender();
+  private scrollTo(offset: number): boolean {
+    const previous = this.scrollOffset;
+    this.scrollOffset = Math.max(0, Math.min(offset, this.maxScrollOffset()));
+    this.followTail = this.scrollOffset >= this.maxScrollOffset();
+    return this.scrollOffset !== previous;
   }
 
   private clampScrollOffset(): void {
-    this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, Math.max(0, this.contentLength - this.pageSize)));
+    this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, this.maxScrollOffset()));
+    if (this.scrollOffset >= this.maxScrollOffset()) this.followTail = true;
+  }
+
+  private maxScrollOffset(): number {
+    return Math.max(0, this.contentLength - this.pageSize);
   }
 }
 

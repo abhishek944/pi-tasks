@@ -1,4 +1,4 @@
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 const EMPTY_COMPONENT = { render: () => [], invalidate: () => { } };
 export class TasksPanelHost {
     state;
@@ -22,19 +22,6 @@ export class TasksPanelHost {
     }
     getMode() {
         return this.mode;
-    }
-    browse() {
-        if (this.mode !== "floating")
-            return "Use /works-panel floating before browsing the panel.";
-        if (!this.tui || !this.panel || !this.handle)
-            return "The Works panel is not available.";
-        const columns = this.tui.terminal.columns || process.stdout.columns || 0;
-        const rows = this.tui.terminal.rows || process.stdout.rows || 0;
-        if (columns < 90 || rows < 18)
-            return "The terminal is too small to browse the Works panel.";
-        this.handle.focus();
-        this.tui.requestRender();
-        return undefined;
     }
     update() {
         this.panel?.invalidate();
@@ -62,7 +49,7 @@ export class TasksPanelHost {
         }
         ui.setWidget("pi-tasks-panel-host", (tui, theme) => {
             this.tui = tui;
-            this.panel = new TasksPanel(tui, this.state, theme, "floating", () => this.handle?.unfocus());
+            this.panel = new TasksPanel(tui, this.state, theme, "floating");
             this.handle = tui.showOverlay(this.panel, {
                 anchor: "top-right",
                 width: "42%",
@@ -89,17 +76,15 @@ class TasksPanel {
     state;
     theme;
     placement;
-    releaseFocus;
-    focused = false;
     scrollOffset = 0;
     pageSize = 1;
     contentLength = 0;
-    constructor(tui, state, theme, placement, releaseFocus) {
+    followTail = true;
+    constructor(tui, state, theme, placement) {
         this.tui = tui;
         this.state = state;
         this.theme = theme;
         this.placement = placement;
-        this.releaseFocus = releaseFocus;
     }
     render(width) {
         if (width < 38)
@@ -120,16 +105,24 @@ class TasksPanel {
         this.contentLength = content.length;
         const terminalRows = this.tui.terminal.rows || process.stdout.rows || 30;
         this.pageSize = this.placement === "widget" ? Math.max(1, content.length) : Math.max(1, Math.floor(terminalRows * 0.48) - 4);
-        this.clampScrollOffset();
+        if (this.placement === "widget") {
+            this.scrollOffset = 0;
+            this.followTail = true;
+        }
+        else if (this.followTail) {
+            this.scrollOffset = this.maxScrollOffset();
+        }
+        else {
+            this.clampScrollOffset();
+        }
         const shown = content.slice(this.scrollOffset, this.scrollOffset + this.pageSize);
-        const hasOverflow = content.length > shown.length;
+        const hasOverflow = content.length > this.pageSize;
         const range = `${this.scrollOffset + 1}–${this.scrollOffset + shown.length}/${content.length}`;
         let title = "Works";
-        if (this.placement === "floating" && (hasOverflow || this.scrollOffset > 0)) {
-            title += this.focused ? ` · ${range} · ↑↓ PgUp/PgDn · Esc` : ` · ${range} · /works-panel browse`;
-        }
-        else if (this.focused) {
-            title += " · Esc to return";
+        if (this.placement === "floating" && hasOverflow) {
+            title += this.tui.mode === "fullscreen"
+                ? ` · ${range} · wheel to scroll`
+                : ` · ${range} · latest · /works for all`;
         }
         const lines = [
             border(innerWidth, "top", this.theme),
@@ -140,36 +133,29 @@ class TasksPanel {
         ];
         return lines.map((line) => `${leftPad}${line}`);
     }
-    handleInput(data) {
-        if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
-            this.releaseFocus?.();
-            this.tui.requestRender();
-            return;
-        }
-        if (matchesKey(data, Key.up))
-            this.scrollBy(-1);
-        else if (matchesKey(data, Key.down))
-            this.scrollBy(1);
-        else if (matchesKey(data, Key.pageUp))
-            this.scrollBy(-this.pageSize);
-        else if (matchesKey(data, Key.pageDown))
-            this.scrollBy(this.pageSize);
-        else if (matchesKey(data, Key.home))
-            this.scrollTo(0);
-        else if (matchesKey(data, Key.end))
-            this.scrollTo(this.contentLength);
+    handleMouse(event) {
+        if (this.placement !== "floating" || event.type !== "wheel" || !event.wheelDelta)
+            return undefined;
+        const changed = this.scrollBy(event.wheelDelta < 0 ? -1 : 1);
+        return { handled: true, render: changed };
     }
     invalidate() { }
     scrollBy(lines) {
-        this.scrollTo(this.scrollOffset + lines);
+        return this.scrollTo(this.scrollOffset + lines);
     }
     scrollTo(offset) {
-        this.scrollOffset = offset;
-        this.clampScrollOffset();
-        this.tui.requestRender();
+        const previous = this.scrollOffset;
+        this.scrollOffset = Math.max(0, Math.min(offset, this.maxScrollOffset()));
+        this.followTail = this.scrollOffset >= this.maxScrollOffset();
+        return this.scrollOffset !== previous;
     }
     clampScrollOffset() {
-        this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, Math.max(0, this.contentLength - this.pageSize)));
+        this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, this.maxScrollOffset()));
+        if (this.scrollOffset >= this.maxScrollOffset())
+            this.followTail = true;
+    }
+    maxScrollOffset() {
+        return Math.max(0, this.contentLength - this.pageSize);
     }
 }
 function workSummaryLine(status, name, count, width, theme) {

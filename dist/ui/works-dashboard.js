@@ -1,4 +1,5 @@
-import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { copyToClipboard } from "@earendil-works/pi-coding-agent";
+import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, } from "@earendil-works/pi-tui";
 import { safeMultiline, safeSingleLine } from "../text.js";
 import { border, frame, rule, todoIcon, workIcon } from "./panel.js";
 const CHROME_LINES = 8;
@@ -15,6 +16,11 @@ export class WorksDashboard {
     detailPageSize = 1;
     detailsVisible = true;
     message = "Ready. Select an item; Escape closes.";
+    messageColor = "warning";
+    copying = false;
+    minimized = false;
+    copyHitRegion;
+    toggleHitRegion;
     disposed = false;
     refreshTimer;
     constructor(tui, theme, keybindings, state, close) {
@@ -32,12 +38,20 @@ export class WorksDashboard {
     render(width) {
         const dialogWidth = Math.max(1, width);
         const innerWidth = Math.max(1, dialogWidth - 2);
-        const items = this.items();
+        const works = this.state.listWorks();
+        const todos = works.flatMap((work) => work.tasks);
+        const header = this.renderHeader(innerWidth, works.length, todos.length);
+        if (this.minimized) {
+            return [
+                border(innerWidth, "top", this.theme),
+                frame(header, innerWidth, this.theme),
+                border(innerWidth, "bottom", this.theme),
+            ];
+        }
+        const items = this.items(works);
         this.syncSelection(items);
         const terminalRows = this.tui.terminal.rows || process.stdout.rows || 30;
         const dialogHeight = Math.max(8, Math.min(36, Math.floor(terminalRows * 0.82)));
-        const works = this.state.listWorks();
-        const todos = works.flatMap((work) => work.tasks);
         const activeWorks = works.filter((work) => work.status === "active").length;
         const completedTodos = todos.filter((todo) => todo.status === "completed").length;
         const summary = `${activeWorks}/${works.length} works active · ${completedTodos}/${todos.length} todos completed · session scoped`;
@@ -52,12 +66,12 @@ export class WorksDashboard {
             rows.push("");
         return [
             border(innerWidth, "top", this.theme),
-            frame(this.theme.fg("accent", this.theme.bold("Works · session work and todos")), innerWidth, this.theme),
+            frame(header, innerWidth, this.theme),
             frame(this.theme.fg("dim", summary), innerWidth, this.theme),
             rule(innerWidth, this.theme),
             ...[...rows, ...details].map((line) => frame(line, innerWidth, this.theme)),
             rule(innerWidth, this.theme),
-            frame(this.theme.fg("warning", truncateToWidth(this.message, innerWidth, "")), innerWidth, this.theme),
+            frame(this.theme.fg(this.messageColor, truncateToWidth(this.message, innerWidth, "")), innerWidth, this.theme),
             frame(this.renderFooter(innerWidth), innerWidth, this.theme),
             border(innerWidth, "bottom", this.theme),
         ];
@@ -72,6 +86,17 @@ export class WorksDashboard {
             this.close();
             return;
         }
+        if (matchesKey(data, "c")) {
+            void this.copyAllAsMarkdown();
+            return;
+        }
+        if (matchesKey(data, "m")) {
+            this.toggleMinimized();
+            return;
+        }
+        if (this.minimized)
+            return;
+        this.messageColor = "warning";
         if (this.keybindings.matches(data, "tui.select.up")) {
             this.select(items, index - 1);
         }
@@ -93,6 +118,19 @@ export class WorksDashboard {
         }
         this.tui.requestRender();
     }
+    handleMouse(event) {
+        if (this.disposed || event.type !== "click" || event.button !== "left" || event.y !== 1)
+            return undefined;
+        if (this.isHit(event.x, this.toggleHitRegion)) {
+            this.toggleMinimized();
+            return { handled: true, focus: true, render: true };
+        }
+        if (this.isHit(event.x, this.copyHitRegion)) {
+            void this.copyAllAsMarkdown();
+            return { handled: true, focus: true, render: true };
+        }
+        return undefined;
+    }
     invalidate() { }
     dispose() {
         if (this.disposed)
@@ -100,9 +138,9 @@ export class WorksDashboard {
         this.disposed = true;
         clearInterval(this.refreshTimer);
     }
-    items() {
+    items(works = this.state.listWorks()) {
         const items = [];
-        for (const work of this.state.listWorks()) {
+        for (const work of works) {
             items.push({ key: `work:${work.workId}`, kind: "work", work });
             for (const todo of work.tasks)
                 items.push({ key: `todo:${todo.taskId}`, kind: "todo", todo, workName: work.workName });
@@ -161,8 +199,86 @@ export class WorksDashboard {
             ...shown,
         ].slice(0, budget);
     }
+    renderHeader(width, workCount, todoCount) {
+        const titleText = this.minimized
+            ? `Works (${workCount} work${workCount === 1 ? "" : "s"}, ${todoCount} todo${todoCount === 1 ? "" : "s"})`
+            : "Works · session work and todos";
+        const title = this.theme.fg("accent", this.theme.bold(titleText));
+        const copyAction = this.copying
+            ? this.theme.fg("dim", "[Copying…]")
+            : this.theme.fg("accent", this.theme.bold("[C Copy]"));
+        const toggleLabel = this.minimized ? "[M Maximize]" : "[M Minimize]";
+        const toggleAction = this.theme.fg("accent", this.theme.bold(toggleLabel));
+        const actionsWidth = visibleWidth(copyAction) + 1 + visibleWidth(toggleAction);
+        const titleWidth = Math.max(0, width - actionsWidth - 1);
+        const shownTitle = truncateToWidth(title, titleWidth, "");
+        const gap = " ".repeat(Math.max(1, width - visibleWidth(shownTitle) - actionsWidth));
+        const copyStart = 1 + visibleWidth(shownTitle) + gap.length;
+        this.copyHitRegion = { start: copyStart, end: copyStart + visibleWidth(copyAction) };
+        const toggleStart = this.copyHitRegion.end + 1;
+        this.toggleHitRegion = { start: toggleStart, end: toggleStart + visibleWidth(toggleAction) };
+        return `${shownTitle}${gap}${copyAction} ${toggleAction}`;
+    }
+    toggleMinimized() {
+        this.minimized = !this.minimized;
+        if (!this.minimized) {
+            this.message = "Dashboard maximized.";
+            this.messageColor = "warning";
+        }
+        this.tui.requestRender();
+    }
+    isHit(x, region) {
+        return region !== undefined && x >= region.start && x < region.end;
+    }
+    async copyAllAsMarkdown() {
+        if (this.copying)
+            return;
+        this.copying = true;
+        this.message = "Copying all works and todos as Markdown…";
+        this.messageColor = "warning";
+        this.tui.requestRender();
+        const works = this.state.listWorks();
+        try {
+            await copyToClipboard(formatWorksMarkdown(works));
+            const todoCount = works.reduce((total, work) => total + work.tasks.length, 0);
+            this.message = `Copied ${works.length} work${works.length === 1 ? "" : "s"} and ${todoCount} todo${todoCount === 1 ? "" : "s"} as Markdown.`;
+            this.messageColor = "success";
+        }
+        catch (error) {
+            const reason = error instanceof Error && error.message ? ` ${safeSingleLine(error.message)}` : "";
+            this.message = `Could not copy works and todos.${reason}`;
+            this.messageColor = "error";
+        }
+        finally {
+            this.copying = false;
+            if (!this.disposed)
+                this.tui.requestRender();
+        }
+    }
     renderFooter(width) {
-        const text = "configured ↑/↓ select · PgUp/PgDn scroll details · confirm toggles · cancel closes";
+        const text = "C copy all · M minimize · configured ↑/↓ select · PgUp/PgDn scroll details · confirm toggles · cancel closes";
         return truncateToWidth(this.theme.fg("muted", text), width, "");
     }
+}
+function formatWorksMarkdown(works) {
+    const lines = ["# Works and Todos", ""];
+    if (works.length === 0)
+        return `${lines.join("\n")}\n_No works or todos in this session._\n`;
+    for (const work of works) {
+        lines.push(`## ${work.workId} — ${escapeMarkdownInline(safeSingleLine(work.workName))}`, "", `**Status:** ${work.status}`, "", "### Details", "", markdownBody(work.workInfo), "", "### Todos", "");
+        if (work.tasks.length === 0) {
+            lines.push("_No todos._", "");
+            continue;
+        }
+        for (const todo of work.tasks) {
+            lines.push(`#### ${todo.taskId} — ${escapeMarkdownInline(safeSingleLine(todo.taskName))}`, "", `**Status:** ${todo.status}`, "", markdownBody(todo.taskInfo), "");
+        }
+    }
+    return `${lines.join("\n").trimEnd()}\n`;
+}
+function markdownBody(value) {
+    return safeMultiline(value).join("\n").trim() || "_No details provided._";
+}
+function escapeMarkdownInline(value) {
+    return value.replace(/([-\\`*_[\]{}()<>#+.!|])/g, "\\$1");
 }

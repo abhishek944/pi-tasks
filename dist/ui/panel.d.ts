@@ -13,7 +13,6 @@ export declare class TasksPanelHost {
     attach(ui: ExtensionUIContext): void;
     setMode(mode: TasksPanelMode): void;
     getMode(): TasksPanelMode;
-    browse(): string | undefined;
     update(): void;
     hide(): void;
     private applyMode;

@@ -1,5 +1,5 @@
-import type { KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, type Focusable, type TUI } from "@earendil-works/pi-tui";
+import { type KeybindingsManager, type Theme } from "@earendil-works/pi-coding-agent";
+import { type Component, type Focusable, type TUI, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
 import type { TaskState } from "../state.js";
 export declare class WorksDashboard implements Component, Focusable {
     private readonly tui;
@@ -14,11 +14,17 @@ export declare class WorksDashboard implements Component, Focusable {
     private detailPageSize;
     private detailsVisible;
     private message;
+    private messageColor;
+    private copying;
+    private minimized;
+    private copyHitRegion;
+    private toggleHitRegion;
     private disposed;
     private readonly refreshTimer;
     constructor(tui: TUI, theme: Theme, keybindings: KeybindingsManager, state: TaskState, close: () => void);
     render(width: number): string[];
     handleInput(data: string): void;
+    handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined;
     invalidate(): void;
     dispose(): void;
     private items;
@@ -27,5 +33,9 @@ export declare class WorksDashboard implements Component, Focusable {
     private keepSelectionVisible;
     private renderRow;
     private renderDetails;
+    private renderHeader;
+    private toggleMinimized;
+    private isHit;
+    private copyAllAsMarkdown;
     private renderFooter;
 }

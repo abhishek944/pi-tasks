@@ -1,4 +1,7 @@
+import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { formatWorksMarkdown } from "../markdown.js";
+import { safeSingleLine } from "../text.js";
 const EMPTY_COMPONENT = { render: () => [], invalidate: () => { } };
 export class TasksPanelHost {
     state;
@@ -7,6 +10,7 @@ export class TasksPanelHost {
     handle;
     ui;
     mode = "floating";
+    minimized = false;
     constructor(state) {
         this.state = state;
     }
@@ -22,6 +26,11 @@ export class TasksPanelHost {
     }
     getMode() {
         return this.mode;
+    }
+    setMinimized(minimized) {
+        this.minimized = minimized;
+        this.panel?.setMinimized(minimized);
+        this.tui?.requestRender();
     }
     update() {
         this.panel?.invalidate();
@@ -42,14 +51,18 @@ export class TasksPanelHost {
         if (this.mode === "widget") {
             ui.setWidget("pi-tasks-panel", (tui, theme) => {
                 this.tui = tui;
-                this.panel = new TasksPanel(tui, this.state, theme, "widget");
+                this.panel = new TasksPanel(tui, this.state, theme, "widget", this.minimized, (minimized) => {
+                    this.minimized = minimized;
+                }, (message, type) => ui.notify(message, type));
                 return this.panel;
             });
             return;
         }
         ui.setWidget("pi-tasks-panel-host", (tui, theme) => {
             this.tui = tui;
-            this.panel = new TasksPanel(tui, this.state, theme, "floating");
+            this.panel = new TasksPanel(tui, this.state, theme, "floating", this.minimized, (minimized) => {
+                this.minimized = minimized;
+            }, (message, type) => ui.notify(message, type));
             this.handle = tui.showOverlay(this.panel, {
                 anchor: "top-right",
                 width: "42%",
@@ -76,15 +89,24 @@ class TasksPanel {
     state;
     theme;
     placement;
+    minimized;
+    onMinimizedChange;
+    notify;
     scrollOffset = 0;
     pageSize = 1;
     contentLength = 0;
     followTail = true;
-    constructor(tui, state, theme, placement) {
+    copying = false;
+    copyHitRegion;
+    toggleHitRegion;
+    constructor(tui, state, theme, placement, minimized, onMinimizedChange, notify) {
         this.tui = tui;
         this.state = state;
         this.theme = theme;
         this.placement = placement;
+        this.minimized = minimized;
+        this.onMinimizedChange = onMinimizedChange;
+        this.notify = notify;
     }
     render(width) {
         if (width < 38)
@@ -93,6 +115,14 @@ class TasksPanel {
         const boxWidth = this.placement === "floating" ? width : Math.min(54, Math.max(38, Math.floor(width * 0.44)));
         const innerWidth = boxWidth - 2;
         const leftPad = this.placement === "widget" ? " ".repeat(Math.max(0, width - boxWidth)) : "";
+        if (this.minimized) {
+            const header = this.renderHeader("Works", innerWidth, leftPad.length);
+            return [
+                border(innerWidth, "top", this.theme),
+                frame(header, innerWidth, this.theme),
+                border(innerWidth, "bottom", this.theme),
+            ].map((line) => `${leftPad}${line}`);
+        }
         const content = [];
         if (works.length === 0)
             content.push(this.theme.fg("muted", "No works yet."));
@@ -124,9 +154,10 @@ class TasksPanel {
                 ? ` · ${range} · wheel to scroll`
                 : ` · ${range} · latest · /works for all`;
         }
+        const header = this.renderHeader(title, innerWidth, leftPad.length);
         const lines = [
             border(innerWidth, "top", this.theme),
-            frame(this.theme.fg("accent", this.theme.bold(title)), innerWidth, this.theme),
+            frame(header, innerWidth, this.theme),
             rule(innerWidth, this.theme),
             ...shown.map((line) => frame(line, innerWidth, this.theme)),
             border(innerWidth, "bottom", this.theme),
@@ -134,12 +165,69 @@ class TasksPanel {
         return lines.map((line) => `${leftPad}${line}`);
     }
     handleMouse(event) {
-        if (this.placement !== "floating" || event.type !== "wheel" || !event.wheelDelta)
+        if (event.type === "click" && event.button === "left" && event.y === 1) {
+            if (this.isHit(event.x, this.toggleHitRegion)) {
+                this.setMinimized(!this.minimized);
+                return { handled: true, render: true };
+            }
+            if (this.isHit(event.x, this.copyHitRegion)) {
+                void this.copyAllAsMarkdown();
+                return { handled: true, render: true };
+            }
+        }
+        if (this.minimized || this.placement !== "floating" || event.type !== "wheel" || !event.wheelDelta)
             return undefined;
         const changed = this.scrollBy(event.wheelDelta < 0 ? -1 : 1);
         return { handled: true, render: changed };
     }
     invalidate() { }
+    setMinimized(minimized) {
+        if (this.minimized === minimized)
+            return;
+        this.minimized = minimized;
+        this.onMinimizedChange(minimized);
+        this.tui.requestRender();
+    }
+    renderHeader(titleText, width, leftPadWidth) {
+        const title = this.theme.fg("accent", this.theme.bold(titleText));
+        const copyAction = this.copying
+            ? this.theme.fg("dim", "[Copying…]")
+            : this.theme.fg("accent", this.theme.bold("[Copy]"));
+        const toggleLabel = this.minimized ? "[Maximize]" : "[Minimize]";
+        const toggleAction = this.theme.fg("accent", this.theme.bold(toggleLabel));
+        const actionsWidth = visibleWidth(copyAction) + 1 + visibleWidth(toggleAction);
+        const titleWidth = Math.max(0, width - actionsWidth - 1);
+        const shownTitle = truncateToWidth(title, titleWidth, "");
+        const gap = " ".repeat(Math.max(1, width - visibleWidth(shownTitle) - actionsWidth));
+        const copyStart = leftPadWidth + 1 + visibleWidth(shownTitle) + gap.length;
+        this.copyHitRegion = { start: copyStart, end: copyStart + visibleWidth(copyAction) };
+        const toggleStart = this.copyHitRegion.end + 1;
+        this.toggleHitRegion = { start: toggleStart, end: toggleStart + visibleWidth(toggleAction) };
+        return `${shownTitle}${gap}${copyAction} ${toggleAction}`;
+    }
+    isHit(x, region) {
+        return region !== undefined && x >= region.start && x < region.end;
+    }
+    async copyAllAsMarkdown() {
+        if (this.copying)
+            return;
+        this.copying = true;
+        this.tui.requestRender();
+        const works = this.state.listWorks();
+        try {
+            await copyToClipboard(formatWorksMarkdown(works));
+            const todoCount = works.reduce((total, work) => total + work.tasks.length, 0);
+            this.notify(`Copied ${works.length} work${works.length === 1 ? "" : "s"} and ${todoCount} todo${todoCount === 1 ? "" : "s"} as Markdown.`, "info");
+        }
+        catch (error) {
+            const reason = error instanceof Error && error.message ? ` ${safeSingleLine(error.message)}` : "";
+            this.notify(`Could not copy works and todos.${reason}`, "error");
+        }
+        finally {
+            this.copying = false;
+            this.tui.requestRender();
+        }
+    }
     scrollBy(lines) {
         return this.scrollTo(this.scrollOffset + lines);
     }

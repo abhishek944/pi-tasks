@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- Added clickable Copy and Minimize/Maximize actions to the persistent compact Works panel.
+- Reused one Markdown export format across the compact panel and `/works` dashboard.
+
 ## 0.3.0
 
 - Added a Copy action to `/works` for exporting every work and todo as clean Markdown.

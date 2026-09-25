@@ -35,7 +35,7 @@ WorkUpdate workId="W1" status="completed"
 
 Run `/works` to inspect full `workInfo` and `taskInfo` in an interactive overlay.
 
-The panel defaults to the floating top-right layout. When its rows overflow, it shows the newest rows; in fullscreen TUI mode, scroll directly over the panel with the mouse wheel. Open `/works` to inspect every row in regular terminal mode. Switch layouts at runtime with `/works-panel floating`, `/works-panel widget`, or `/works-panel off`.
+The panel defaults to the floating top-right layout. In fullscreen TUI mode, its title bar has clickable Copy and Minimize/Maximize actions, and you can scroll overflowing rows directly with the mouse wheel. Open `/works` to inspect every row or copy from the keyboard. Use `/works-panel minimize` or `/works-panel maximize` when mouse input is unavailable. Switch layouts with `/works-panel floating`, `/works-panel widget`, or `/works-panel off`.
 
 See [the usage guide](docs/USAGE_GUIDE.md) and [reference](docs/REFERENCE.md).
 

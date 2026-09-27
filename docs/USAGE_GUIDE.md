@@ -18,12 +18,14 @@ The extension applies this guidance across all loaded skills and does not skip w
 ```text
 WorkCreate workName="Improve authentication" workInfo="Detailed context..." status="active"
 WorkList
+WorkList limit=10
+WorkList status="active" limit=5
 WorkList workId="W1"
 WorkUpdate workId="W1" status="blocked" workInfo="Detailed blocker and retained context..."
 WorkDelete workId="W1"
 ```
 
-`WorkDelete` also removes associated todos.
+`WorkList` returns all matching works when `limit` is omitted. A positive integer `limit` selects the newest matching works after filters, displayed oldest-to-newest; every selected work still includes all of its todos. The result shows how many works were returned and how many matched in total. `WorkDelete` also removes associated todos.
 
 ## Todo tools
 
@@ -31,9 +33,12 @@ WorkDelete workId="W1"
 TodoCreate workId="W1" taskName="Inspect token flow" taskInfo="Detailed context..."
 TodoList workId="W1"
 TodoList status="active"
+TodoList workId="W1" limit=10
 TodoUpdate taskId="T1" status="completed" taskInfo="Detailed outcome..."
 TodoDelete taskId="T1"
 ```
+
+`TodoList` returns all matching todos when `limit` is omitted. A positive integer `limit` selects the newest matching todos after filters, displayed oldest-to-newest. The result shows how many todos were returned and how many matched in total. Both list tools can still truncate very long text output at 50KB or 2,000 lines.
 
 ## TUI
 

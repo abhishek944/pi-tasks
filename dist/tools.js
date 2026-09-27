@@ -31,14 +31,17 @@ export function registerTaskTools(pi, state) {
     pi.registerTool({
         name: "WorkList",
         label: "WorkList",
-        description: "List session-scoped works and their associated todos. Results include detailed workInfo and taskInfo and are truncated at 50KB or 2000 lines.",
+        description: "List session-scoped works and their associated todos. Optional limit returns the newest N matching works after filtering, in chronological order; omitted returns all. Results include detailed workInfo and taskInfo and are truncated at 50KB or 2000 lines.",
         parameters: Type.Object({
             workId: Type.Optional(Type.String()),
             status: Type.Optional(WorkStatusSchema),
+            limit: Type.Optional(Type.Integer({ minimum: 1, description: "Return only the newest N matching works; omit for all." })),
         }, { additionalProperties: false }),
         execute(_id, params) {
-            const works = state.listWorks({ workId: params.workId, status: params.status });
-            return Promise.resolve(taskResult(bounded(formatWorks(works)), "work-list", { count: works.length }, `${works.length} work${works.length === 1 ? "" : "s"} found`));
+            const matches = state.listWorks({ workId: params.workId, status: params.status });
+            const works = params.limit === undefined ? matches : matches.slice(-params.limit);
+            const summary = `Showing ${works.length} of ${matches.length} matching works`;
+            return Promise.resolve(taskResult(bounded(`${summary}\n\n${formatWorks(works)}`), "work-list", { count: works.length, total: matches.length }, summary));
         },
         renderCall: renderTaskCall("WorkList"),
         renderResult: renderTaskResult,
@@ -103,15 +106,18 @@ export function registerTaskTools(pi, state) {
     pi.registerTool({
         name: "TodoList",
         label: "TodoList",
-        description: "List todos by task, work, or status. Results include detailed taskInfo and are truncated at 50KB or 2000 lines.",
+        description: "List todos by task, work, or status. Optional limit returns the newest N matching todos after filtering, in chronological order; omitted returns all. Results include detailed taskInfo and are truncated at 50KB or 2000 lines.",
         parameters: Type.Object({
             taskId: Type.Optional(Type.String()),
             workId: Type.Optional(Type.String()),
             status: Type.Optional(TodoStatusSchema),
+            limit: Type.Optional(Type.Integer({ minimum: 1, description: "Return only the newest N matching todos; omit for all." })),
         }, { additionalProperties: false }),
         execute(_id, params) {
-            const todos = state.listTodos({ taskId: params.taskId, workId: params.workId, status: params.status });
-            return Promise.resolve(taskResult(bounded(formatTodos(todos)), "todo-list", { count: todos.length }, `${todos.length} todo${todos.length === 1 ? "" : "s"} found`));
+            const matches = state.listTodos({ taskId: params.taskId, workId: params.workId, status: params.status });
+            const todos = params.limit === undefined ? matches : matches.slice(-params.limit);
+            const summary = `Showing ${todos.length} of ${matches.length} matching todos`;
+            return Promise.resolve(taskResult(bounded(`${summary}\n\n${formatTodos(todos)}`), "todo-list", { count: todos.length, total: matches.length }, summary));
         },
         renderCall: renderTaskCall("TodoList"),
         renderResult: renderTaskResult,

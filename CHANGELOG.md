@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0
+
+- Added optional positive `limit` to `WorkList` and `TodoList` for selecting the newest matching records after filtering.
+- Included returned and total matching counts in list results and documented the selection behavior.
+
 ## 0.4.0
 
 - Added clickable Copy and Minimize/Maximize actions to the persistent compact Works panel.

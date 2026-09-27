@@ -14,6 +14,8 @@ Limits:
 - 10,000 characters per information field
 - list tool text is truncated at 50KB or 2,000 lines
 
+`WorkList` and `TodoList` accept an optional positive integer `limit`. Without it, they return all matching records (subject to the output truncation above). With it, filters are applied first, then the newest `limit` matching works or todos are returned in oldest-to-newest order within that selection. A `WorkList` limit applies to works, not their nested todos: all todos belonging to each selected work are included. Both tools report the number returned and the total number matching the filters; those counts describe records selected before any text truncation.
+
 ## Data
 
 A work contains `workId`, `workName`, `workInfo`, `status`, `createdAt`, and `updatedAt`. Work status is `planned`, `active`, `blocked`, `completed`, or `cancelled`.

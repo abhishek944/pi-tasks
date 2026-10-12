@@ -3,6 +3,7 @@ const TRACKING_GUIDANCE = `[SESSION COORDINATION]
 Work is the overall outcome being pursued. A todo is a concrete step that belongs to a work. A monitor runs one long-lived background command. A loop schedules a future, recurring, event-driven, or idle continuation.
 
 For every normal user request that starts or continues work, keep the session's work and todo records synchronized. Do not skip tracking because the work looks small.
+Write workInfo and taskInfo in normal prose with full sentences and spaces between words. Conversational brevity modes must not compress stored records or concatenate words.
 
 Before implementation, investigation, or any other requested work:
 1. Use WorkList and TodoList to find the relevant existing records and avoid duplicates.

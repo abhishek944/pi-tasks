@@ -5,16 +5,18 @@ import { renderTaskCall, renderTaskResult, taskResult } from "./tool-result.js";
 const WorkStatusSchema = StringEnum(["planned", "active", "blocked", "completed", "cancelled"]);
 const TodoStatusSchema = StringEnum(["pending", "active", "blocked", "completed", "cancelled"]);
 const NameSchema = Type.String({ minLength: 1, maxLength: 240 });
-const InfoSchema = Type.String({ minLength: 1, maxLength: 10_000 });
+const DETAILS_GUIDANCE = "Write workInfo and taskInfo in normal prose with full sentences and spaces between words. Conversational brevity modes must not compress stored records or concatenate words.";
+const InfoSchema = Type.String({ minLength: 1, maxLength: 10_000, description: DETAILS_GUIDANCE });
 export function registerTaskTools(pi, state) {
     pi.registerTool({
         name: "WorkCreate",
         label: "WorkCreate",
-        description: "Create a session-scoped work item. Use detailed workInfo that preserves the goal, context, scope, constraints, decisions, and expected outcome.",
+        description: `Create a session-scoped work item. Use detailed workInfo that preserves the goal, context, scope, constraints, decisions, and expected outcome. ${DETAILS_GUIDANCE}`,
         promptSnippet: "Create a session-scoped work item before starting substantial actionable work",
         promptGuidelines: [
             "Use WorkCreate for normal requests that start new work in the main conversation; never use it during /ask or /btw.",
             "Before creating work, use WorkList to avoid duplicating an existing work item.",
+            DETAILS_GUIDANCE,
         ],
         parameters: Type.Object({
             workName: NameSchema,
@@ -49,9 +51,9 @@ export function registerTaskTools(pi, state) {
     pi.registerTool({
         name: "WorkUpdate",
         label: "WorkUpdate",
-        description: "Update a work's name, detailed information, or status. Use before implementation to mark relevant work active and after progress to keep its detailed context current.",
+        description: `Update a work's name, detailed information, or status. Use before implementation to mark relevant work active and after progress to keep its detailed context current. ${DETAILS_GUIDANCE}`,
         promptSnippet: "Update work status and detailed context as actionable work progresses",
-        promptGuidelines: ["Use WorkUpdate and TodoUpdate before and after actionable main-conversation work; never update tracking during /ask or /btw."],
+        promptGuidelines: ["Use WorkUpdate and TodoUpdate before and after actionable main-conversation work; never update tracking during /ask or /btw.", DETAILS_GUIDANCE],
         parameters: Type.Object({
             workId: Type.String(),
             workName: Type.Optional(NameSchema),
@@ -84,11 +86,12 @@ export function registerTaskTools(pi, state) {
     pi.registerTool({
         name: "TodoCreate",
         label: "TodoCreate",
-        description: "Create a todo under an existing work. taskInfo must contain enough detailed context, scope, constraints, expected outcome, and verification guidance to execute the task without guessing.",
+        description: `Create a todo under an existing work. taskInfo must contain enough detailed context, scope, constraints, expected outcome, and verification guidance to execute the task without guessing. ${DETAILS_GUIDANCE}`,
         promptSnippet: "Create detailed todos under the current work before implementation",
         promptGuidelines: [
             "Use TodoCreate only under an existing work and only for actionable main-conversation work; never use it during /ask or /btw.",
             "Keep taskInfo detailed, current, and self-contained.",
+            DETAILS_GUIDANCE,
         ],
         parameters: Type.Object({
             workId: Type.String(),
@@ -125,9 +128,9 @@ export function registerTaskTools(pi, state) {
     pi.registerTool({
         name: "TodoUpdate",
         label: "TodoUpdate",
-        description: "Update a todo's name, detailed information, or status. Mark a todo active immediately before starting it and completed or blocked after the attempt.",
+        description: `Update a todo's name, detailed information, or status. Mark a todo active immediately before starting it and completed or blocked after the attempt. ${DETAILS_GUIDANCE}`,
         promptSnippet: "Keep todo status and detailed context synchronized with active work",
-        promptGuidelines: ["Use TodoUpdate immediately before and after working on a todo in the main conversation; never update tracking during /ask or /btw."],
+        promptGuidelines: ["Use TodoUpdate immediately before and after working on a todo in the main conversation; never update tracking during /ask or /btw.", DETAILS_GUIDANCE],
         parameters: Type.Object({
             taskId: Type.String(),
             taskName: Type.Optional(NameSchema),

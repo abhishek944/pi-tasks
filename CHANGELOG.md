@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1
+
+- Clarified that stored work and todo details use full sentences and normal spacing, regardless of conversational brevity modes.
+- Added this guidance to tool descriptions, detail schemas, session coordination, and the usage guide.
+
 ## 0.5.0
 
 - Added optional positive `limit` to `WorkList` and `TodoList` for selecting the newest matching records after filtering.

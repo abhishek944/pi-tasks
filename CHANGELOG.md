@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+
+- Added centered repository Git status to the compact panel and `/works` top border, retained when minimized.
+- Show branch or detached commit plus staged, unstaged, and untracked file counts, with clean/loading/unavailable states and width-aware branch truncation.
+- Share a read-only, asynchronous one-second Git cache across visible views, preserving the last snapshot during refreshes and stopping polling when hidden.
+- Added Open between Copy and Minimize/Maximize to launch `cursor .` in the current session directory, with visible launch errors.
+- Added the `o` shortcut in `/works` and `/works-panel open` for keyboard access.
+
 ## 0.5.1
 
 - Clarified that stored work and todo details use full sentences and normal spacing, regardless of conversational brevity modes.

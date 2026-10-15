@@ -35,7 +35,7 @@ WorkUpdate workId="W1" status="completed"
 
 Run `/works` to inspect full `workInfo` and `taskInfo` in an interactive overlay.
 
-The panel defaults to the floating top-right layout. In fullscreen TUI mode, its title bar has clickable Copy and Minimize/Maximize actions, and you can scroll overflowing rows directly with the mouse wheel. Open `/works` to inspect every row or copy from the keyboard. Use `/works-panel minimize` or `/works-panel maximize` when mouse input is unavailable. Switch layouts with `/works-panel floating`, `/works-panel widget`, or `/works-panel off`.
+The panel defaults to the floating top-right layout. Its top border centers the current repository's Git branch and staged/unstaged/untracked file counts, refreshed asynchronously with a one-second cache. Clean repositories show `clean`. In fullscreen TUI mode, its title bar has clickable Copy, Open, and Minimize/Maximize actions, and you can scroll overflowing rows directly with the mouse wheel. Open runs `cursor .` in the current session directory (the Cursor CLI must be on PATH). Open `/works` to inspect every row or copy from the keyboard. Use `/works-panel minimize`, `/works-panel maximize`, or `/works-panel open` when mouse input is unavailable. In `/works`, press `o` to open Cursor. Switch layouts with `/works-panel floating`, `/works-panel widget`, or `/works-panel off`.
 
 See [the usage guide](docs/USAGE_GUIDE.md) and [reference](docs/REFERENCE.md).
 

@@ -1,7 +1,11 @@
 import { runWorksOverlay } from "./ui/overlay.js";
 import { WorksDashboard } from "./ui/works-dashboard.js";
-export function registerWorksCommand(pi, state) {
+export function registerWorksCommand(pi, state, git) {
     let closeActiveDashboard;
+    pi.on("session_start", () => {
+        closeActiveDashboard?.();
+        closeActiveDashboard = undefined;
+    });
     pi.on("session_shutdown", () => {
         closeActiveDashboard?.();
         closeActiveDashboard = undefined;
@@ -24,7 +28,7 @@ export function registerWorksCommand(pi, state) {
                     };
                     commandClose = closeCurrent;
                     closeActiveDashboard = closeCurrent;
-                    return new WorksDashboard(tui, theme, keybindings, state, closeCurrent);
+                    return new WorksDashboard(tui, theme, keybindings, state, closeCurrent, ctx.cwd, git, (message, type) => ctx.ui.notify(message, type));
                 });
             }
             catch (error) {

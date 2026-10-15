@@ -1,19 +1,34 @@
 import { registerWorksCommand } from "./command.js";
+import { GitStatusCache } from "./git-status.js";
+import { openRepository } from "./open-repository.js";
 import { TaskState } from "./state.js";
+import { safeSingleLine } from "./text.js";
 import { registerTaskTools } from "./tools.js";
 import { registerTrackingGuidance } from "./tracking.js";
 import { TasksPanelHost } from "./ui/panel.js";
 export default function tasksExtension(pi) {
     let panel;
     const state = new TaskState(pi, () => panel?.update());
-    panel = new TasksPanelHost(state);
+    const git = new GitStatusCache();
+    panel = new TasksPanelHost(state, git);
     registerTaskTools(pi, state);
     registerTrackingGuidance(pi);
-    registerWorksCommand(pi, state);
+    registerWorksCommand(pi, state, git);
     pi.registerCommand("works-panel", {
         description: "Set the works panel display mode",
         handler: async (args, ctx) => {
             const requested = args.trim();
+            if (requested === "open") {
+                try {
+                    await openRepository(ctx.cwd);
+                    ctx.ui.notify("Opened repository in Cursor.", "info");
+                }
+                catch (error) {
+                    const reason = error instanceof Error ? ` ${safeSingleLine(error.message)}` : "";
+                    ctx.ui.notify(`Could not open Cursor. Check cursor is on PATH.${reason}`, "error");
+                }
+                return;
+            }
             if (requested === "minimize" || requested === "maximize") {
                 panel?.setMinimized(requested === "minimize");
                 ctx.ui.notify(`Works panel: ${requested}d`, "info");
@@ -21,7 +36,7 @@ export default function tasksExtension(pi) {
             }
             const mode = requested === "floating" || requested === "widget" || requested === "off" ? requested : undefined;
             if (!mode) {
-                ctx.ui.notify("Usage: /works-panel floating|widget|off|minimize|maximize", "info");
+                ctx.ui.notify("Usage: /works-panel floating|widget|off|minimize|maximize|open", "info");
                 return;
             }
             panel?.setMode(mode);
@@ -30,13 +45,19 @@ export default function tasksExtension(pi) {
     });
     pi.on("session_start", (_event, ctx) => {
         state.restore(ctx);
+        git.setCwd(ctx.cwd);
         if (ctx.mode === "tui")
-            panel?.attach(ctx.ui);
+            panel?.attach(ctx.ui, ctx.cwd);
     });
     pi.on("session_tree", (_event, ctx) => {
         state.restore(ctx);
     });
+    pi.on("tool_result", (event) => {
+        if (event.toolName === "write" || event.toolName === "edit" || event.toolName === "bash")
+            git.invalidate();
+    });
     pi.on("session_shutdown", () => {
         panel?.hide();
+        git.dispose();
     });
 }

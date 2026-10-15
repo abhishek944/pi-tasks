@@ -44,15 +44,20 @@ TodoDelete taskId="T1"
 
 ## TUI
 
-The panel defaults to a floating top-right layout and does not take keyboard focus. It hides on small terminals. In fullscreen TUI mode, click Copy in its title bar to copy every work and todo as Markdown, or click Minimize to collapse the panel to a small title bar. Copy remains available while minimized, and Maximize restores the rows. When more rows exist than fit, the floating panel starts at the newest rows; move the mouse over it and use the wheel to scroll older or newer rows without taking focus from the editor. In regular terminal mode, open `/works` to browse and copy the complete list.
+The panel defaults to a floating top-right layout and does not take keyboard focus. It hides on small terminals. The top border centers repository-wide Git status: `git main · S2 U3 ?1` means two staged files, three unstaged files, and one untracked file; a file with both staged and unstaged edits counts in both. A clean repository shows `git main · clean`. Long branches shorten before counts. Detached HEAD shows `@` plus the short commit. Git remains visible while minimized and adds no content row.
 
-Use `/works-panel minimize` or `/works-panel maximize` when mouse input is unavailable. Use `/works-panel widget` for a right-aligned layout above the editor that renders every row and retains the clickable title actions, `/works-panel floating` to return to the floating layout, or `/works-panel off` to hide it.
+The asynchronous Git cache refreshes every second while a view is attached; file-changing tool results expire it sooner without blanking the last snapshot. Initial reads show `git loading…`; outside Git the border is plain, and initial failures show `git unavailable`. Later refresh failures retain the last snapshot until a successful read. Polling is read-only and stops when both the panel and dashboard are closed/off.
 
-Run `/works` for full details. Its top bar includes Copy and Minimize actions. In fullscreen TUI mode, click Minimize to collapse the dashboard to a top bar showing the current work and todo totals; click Maximize to restore it. The actions also have keyboard shortcuts that work in regular terminal mode.
+In fullscreen TUI mode, click Copy in its title bar to copy every work and todo as Markdown, Open to run `cursor .` in the current session directory, or Minimize to collapse the panel to a small title bar. Copy and Open remain available while minimized, and Maximize restores the rows. Cursor's command-line launcher must be on PATH; launch failures produce visible error feedback. When more rows exist than fit, the floating panel starts at the newest rows; move the mouse over it and use the wheel to scroll older or newer rows without taking focus from the editor. In regular terminal mode, open `/works` to browse and copy the complete list.
+
+Use `/works-panel minimize`, `/works-panel maximize`, or `/works-panel open` when mouse input is unavailable. Use `/works-panel widget` for a right-aligned layout above the editor that renders every row and retains the clickable title actions, `/works-panel floating` to return to the floating layout, or `/works-panel off` to hide it.
+
+Run `/works` for full details. Its top border mirrors repository-wide Git status, and its top bar includes Copy, Open, and Minimize actions. In fullscreen TUI mode, click Minimize to collapse the dashboard to a top bar showing the current work and todo totals; click Maximize to restore it. The actions also have keyboard shortcuts that work in regular terminal mode.
 
 - `c`: copy all works and todos as Markdown
+- `o`: open the current repository/session directory in Cursor
 - `m`: minimize or maximize the dashboard
-- Fullscreen left click: activate Copy, Minimize, or Maximize
+- Fullscreen left click: activate Copy, Open, Minimize, or Maximize
 - Configured Up/Down keys: select
 - Configured Page Up/Page Down keys: scroll long details
 - Configured confirmation key: show or hide detailed information

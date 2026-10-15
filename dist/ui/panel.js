@@ -1,21 +1,27 @@
+import { stripVTControlCharacters } from "node:util";
 import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { formatWorksMarkdown } from "../markdown.js";
+import { openRepository } from "../open-repository.js";
 import { safeSingleLine } from "../text.js";
 const EMPTY_COMPONENT = { render: () => [], invalidate: () => { } };
 export class TasksPanelHost {
     state;
+    git;
     tui;
     panel;
     handle;
     ui;
     mode = "floating";
     minimized = false;
-    constructor(state) {
+    cwd = "";
+    constructor(state, git) {
         this.state = state;
+        this.git = git;
     }
-    attach(ui) {
+    attach(ui, cwd) {
         this.hideCurrent();
+        this.cwd = cwd;
         this.ui = ui;
         this.applyMode();
     }
@@ -53,7 +59,7 @@ export class TasksPanelHost {
                 this.tui = tui;
                 this.panel = new TasksPanel(tui, this.state, theme, "widget", this.minimized, (minimized) => {
                     this.minimized = minimized;
-                }, (message, type) => ui.notify(message, type));
+                }, (message, type) => ui.notify(message, type), this.cwd, this.git);
                 return this.panel;
             });
             return;
@@ -62,7 +68,7 @@ export class TasksPanelHost {
             this.tui = tui;
             this.panel = new TasksPanel(tui, this.state, theme, "floating", this.minimized, (minimized) => {
                 this.minimized = minimized;
-            }, (message, type) => ui.notify(message, type));
+            }, (message, type) => ui.notify(message, type), this.cwd, this.git);
             this.handle = tui.showOverlay(this.panel, {
                 anchor: "top-right",
                 width: "42%",
@@ -70,12 +76,17 @@ export class TasksPanelHost {
                 maxHeight: "48%",
                 margin: { top: 1, right: 1 },
                 nonCapturing: true,
-                visible: (terminalWidth, terminalHeight) => terminalWidth >= 90 && terminalHeight >= 18,
+                visible: (terminalWidth, terminalHeight) => {
+                    const visible = terminalWidth >= 90 && terminalHeight >= 18;
+                    this.panel?.setVisible(visible);
+                    return visible;
+                },
             });
             return EMPTY_COMPONENT;
         });
     }
     hideCurrent() {
+        this.panel?.dispose();
         this.handle?.hide();
         this.handle = undefined;
         this.ui?.setWidget("pi-tasks-panel", undefined);
@@ -92,14 +103,20 @@ class TasksPanel {
     minimized;
     onMinimizedChange;
     notify;
+    cwd;
+    git;
     scrollOffset = 0;
     pageSize = 1;
     contentLength = 0;
     followTail = true;
     copying = false;
+    opening = false;
+    disposed = false;
+    unsubscribeGit;
     copyHitRegion;
+    openHitRegion;
     toggleHitRegion;
-    constructor(tui, state, theme, placement, minimized, onMinimizedChange, notify) {
+    constructor(tui, state, theme, placement, minimized, onMinimizedChange, notify, cwd, git) {
         this.tui = tui;
         this.state = state;
         this.theme = theme;
@@ -107,8 +124,12 @@ class TasksPanel {
         this.minimized = minimized;
         this.onMinimizedChange = onMinimizedChange;
         this.notify = notify;
+        this.cwd = cwd;
+        this.git = git;
     }
     render(width) {
+        if (this.placement === "widget")
+            this.setVisible(width >= 38);
         if (width < 38)
             return [];
         const works = this.state.listWorks();
@@ -118,7 +139,7 @@ class TasksPanel {
         if (this.minimized) {
             const header = this.renderHeader("Works", innerWidth, leftPad.length);
             return [
-                border(innerWidth, "top", this.theme),
+                gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
                 frame(header, innerWidth, this.theme),
                 border(innerWidth, "bottom", this.theme),
             ].map((line) => `${leftPad}${line}`);
@@ -156,7 +177,7 @@ class TasksPanel {
         }
         const header = this.renderHeader(title, innerWidth, leftPad.length);
         const lines = [
-            border(innerWidth, "top", this.theme),
+            gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
             frame(header, innerWidth, this.theme),
             rule(innerWidth, this.theme),
             ...shown.map((line) => frame(line, innerWidth, this.theme)),
@@ -165,6 +186,8 @@ class TasksPanel {
         return lines.map((line) => `${leftPad}${line}`);
     }
     handleMouse(event) {
+        if (this.disposed)
+            return undefined;
         if (event.type === "click" && event.button === "left" && event.y === 1) {
             if (this.isHit(event.x, this.toggleHitRegion)) {
                 this.setMinimized(!this.minimized);
@@ -174,6 +197,10 @@ class TasksPanel {
                 void this.copyAllAsMarkdown();
                 return { handled: true, render: true };
             }
+            if (this.isHit(event.x, this.openHitRegion)) {
+                void this.openInCursor();
+                return { handled: true, render: true };
+            }
         }
         if (this.minimized || this.placement !== "floating" || event.type !== "wheel" || !event.wheelDelta)
             return undefined;
@@ -181,6 +208,23 @@ class TasksPanel {
         return { handled: true, render: changed };
     }
     invalidate() { }
+    dispose() {
+        if (this.disposed)
+            return;
+        this.setVisible(false);
+        this.disposed = true;
+    }
+    setVisible(visible) {
+        if (this.disposed)
+            return;
+        if (visible) {
+            this.unsubscribeGit ??= this.git.subscribe(() => this.tui.requestRender());
+        }
+        else {
+            this.unsubscribeGit?.();
+            this.unsubscribeGit = undefined;
+        }
+    }
     setMinimized(minimized) {
         if (this.minimized === minimized)
             return;
@@ -193,20 +237,44 @@ class TasksPanel {
         const copyAction = this.copying
             ? this.theme.fg("dim", "[Copying…]")
             : this.theme.fg("accent", this.theme.bold("[Copy]"));
+        const openAction = this.theme.fg(this.opening ? "dim" : "accent", this.theme.bold("[Open]"));
         const toggleLabel = this.minimized ? "[Maximize]" : "[Minimize]";
         const toggleAction = this.theme.fg("accent", this.theme.bold(toggleLabel));
-        const actionsWidth = visibleWidth(copyAction) + 1 + visibleWidth(toggleAction);
+        const actionsWidth = visibleWidth(copyAction) + 1 + visibleWidth(openAction) + 1 + visibleWidth(toggleAction);
         const titleWidth = Math.max(0, width - actionsWidth - 1);
         const shownTitle = truncateToWidth(title, titleWidth, "");
         const gap = " ".repeat(Math.max(1, width - visibleWidth(shownTitle) - actionsWidth));
         const copyStart = leftPadWidth + 1 + visibleWidth(shownTitle) + gap.length;
         this.copyHitRegion = { start: copyStart, end: copyStart + visibleWidth(copyAction) };
-        const toggleStart = this.copyHitRegion.end + 1;
+        const openStart = this.copyHitRegion.end + 1;
+        this.openHitRegion = { start: openStart, end: openStart + visibleWidth(openAction) };
+        const toggleStart = this.openHitRegion.end + 1;
         this.toggleHitRegion = { start: toggleStart, end: toggleStart + visibleWidth(toggleAction) };
-        return `${shownTitle}${gap}${copyAction} ${toggleAction}`;
+        return `${shownTitle}${gap}${copyAction} ${openAction} ${toggleAction}`;
     }
     isHit(x, region) {
         return region !== undefined && x >= region.start && x < region.end;
+    }
+    async openInCursor() {
+        if (this.opening)
+            return;
+        this.opening = true;
+        this.tui.requestRender();
+        try {
+            await openRepository(this.cwd);
+            if (!this.disposed)
+                this.notify("Opened repository in Cursor.", "info");
+        }
+        catch (error) {
+            const reason = error instanceof Error ? ` ${safeSingleLine(error.message)}` : "";
+            if (!this.disposed)
+                this.notify(`Could not open Cursor. Check that cursor is installed on PATH.${reason}`, "error");
+        }
+        finally {
+            this.opening = false;
+            if (!this.disposed)
+                this.tui.requestRender();
+        }
     }
     async copyAllAsMarkdown() {
         if (this.copying)
@@ -282,6 +350,29 @@ export function frame(content, innerWidth, theme) {
 }
 export function rule(innerWidth, theme) {
     return theme.fg("border", `├${"─".repeat(innerWidth)}┤`);
+}
+export function gitBorder(innerWidth, theme, snapshot) {
+    if (snapshot.kind === "not-repository" || innerWidth < 6)
+        return border(innerWidth, "top", theme);
+    let label;
+    if (snapshot.kind === "ready") {
+        const clean = snapshot.staged === 0 && snapshot.unstaged === 0 && snapshot.untracked === 0;
+        let suffix = clean ? " · clean" : ` · S${snapshot.staged} U${snapshot.unstaged} ?${snapshot.untracked}`;
+        if (!clean && visibleWidth(suffix) > innerWidth - 13) {
+            const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 0 });
+            suffix = ` · S${compact.format(snapshot.staged)} U${compact.format(snapshot.unstaged)} ?${compact.format(snapshot.untracked)}`;
+        }
+        const branchWidth = Math.max(0, innerWidth - visibleWidth(`git ${suffix}`) - 4);
+        label = `git ${truncateToWidth(safeSingleLine(snapshot.branch), branchWidth, "…")}${suffix}`;
+    }
+    else {
+        label = snapshot.kind === "loading" ? "git loading…" : "git unavailable";
+    }
+    // Truncation may insert ANSI resets; color the complete plain label afterward.
+    label = stripVTControlCharacters(truncateToWidth(label, innerWidth - 4, "…"));
+    const slack = innerWidth - visibleWidth(label) - 2;
+    const left = Math.floor(slack / 2);
+    return theme.fg("border", `┌${"─".repeat(left)} ${label} ${"─".repeat(slack - left)}┐`);
 }
 export function border(innerWidth, edge, theme) {
     return theme.fg("border", `${edge === "top" ? "┌" : "└"}${"─".repeat(innerWidth)}${edge === "top" ? "┐" : "┘"}`);

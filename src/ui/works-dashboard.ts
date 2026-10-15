@@ -10,11 +10,13 @@ import {
   visibleWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
+import type { GitStatusCache } from "../git-status.js";
 import { formatWorksMarkdown } from "../markdown.js";
+import { openRepository } from "../open-repository.js";
 import type { TaskState } from "../state.js";
 import { safeMultiline, safeSingleLine } from "../text.js";
 import type { Todo, WorkWithTodos } from "../types.js";
-import { border, frame, rule, todoIcon, workIcon } from "./panel.js";
+import { border, frame, gitBorder, rule, todoIcon, workIcon } from "./panel.js";
 
 type DashboardItem =
   | { key: `work:${string}`; kind: "work"; work: WorkWithTodos }
@@ -34,7 +36,10 @@ export class WorksDashboard implements Component, Focusable {
   private message = "Ready. Select an item; Escape closes.";
   private messageColor: "warning" | "success" | "error" = "warning";
   private copying = false;
+  private opening = false;
   private minimized = false;
+  private readonly unsubscribeGit: () => void;
+  private openHitRegion: HeaderHitRegion | undefined;
   private copyHitRegion: HeaderHitRegion | undefined;
   private toggleHitRegion: HeaderHitRegion | undefined;
   private disposed = false;
@@ -46,7 +51,11 @@ export class WorksDashboard implements Component, Focusable {
     private readonly keybindings: KeybindingsManager,
     private readonly state: TaskState,
     private readonly close: () => void,
+    private readonly cwd: string,
+    private readonly git: GitStatusCache,
+    private readonly notify: (message: string, type: "error") => void,
   ) {
+    this.unsubscribeGit = git.subscribe(() => tui.requestRender());
     this.refreshTimer = setInterval(() => {
       if (!this.disposed) this.tui.requestRender();
     }, 1_000);
@@ -61,7 +70,7 @@ export class WorksDashboard implements Component, Focusable {
     const header = this.renderHeader(innerWidth, works.length, todos.length);
     if (this.minimized) {
       return [
-        border(innerWidth, "top", this.theme),
+        gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
         frame(header, innerWidth, this.theme),
         border(innerWidth, "bottom", this.theme),
       ];
@@ -84,7 +93,7 @@ export class WorksDashboard implements Component, Focusable {
     while (rows.length < listHeight) rows.push("");
 
     return [
-      border(innerWidth, "top", this.theme),
+      gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
       frame(header, innerWidth, this.theme),
       frame(this.theme.fg("dim", summary), innerWidth, this.theme),
       rule(innerWidth, this.theme),
@@ -107,6 +116,10 @@ export class WorksDashboard implements Component, Focusable {
     }
     if (matchesKey(data, "c")) {
       void this.copyAllAsMarkdown();
+      return;
+    }
+    if (matchesKey(data, "o")) {
+      void this.openInCursor();
       return;
     }
     if (matchesKey(data, "m")) {
@@ -143,6 +156,10 @@ export class WorksDashboard implements Component, Focusable {
       void this.copyAllAsMarkdown();
       return { handled: true, focus: true, render: true };
     }
+    if (this.isHit(event.x, this.openHitRegion)) {
+      void this.openInCursor();
+      return { handled: true, focus: true, render: true };
+    }
     return undefined;
   }
 
@@ -151,6 +168,7 @@ export class WorksDashboard implements Component, Focusable {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.unsubscribeGit();
     clearInterval(this.refreshTimer);
   }
 
@@ -222,17 +240,20 @@ export class WorksDashboard implements Component, Focusable {
     const copyAction = this.copying
       ? this.theme.fg("dim", "[Copying…]")
       : this.theme.fg("accent", this.theme.bold("[C Copy]"));
+    const openAction = this.theme.fg(this.opening ? "dim" : "accent", this.theme.bold("[O Open]"));
     const toggleLabel = this.minimized ? "[M Maximize]" : "[M Minimize]";
     const toggleAction = this.theme.fg("accent", this.theme.bold(toggleLabel));
-    const actionsWidth = visibleWidth(copyAction) + 1 + visibleWidth(toggleAction);
+    const actionsWidth = visibleWidth(copyAction) + 1 + visibleWidth(openAction) + 1 + visibleWidth(toggleAction);
     const titleWidth = Math.max(0, width - actionsWidth - 1);
     const shownTitle = truncateToWidth(title, titleWidth, "");
     const gap = " ".repeat(Math.max(1, width - visibleWidth(shownTitle) - actionsWidth));
     const copyStart = 1 + visibleWidth(shownTitle) + gap.length;
     this.copyHitRegion = { start: copyStart, end: copyStart + visibleWidth(copyAction) };
-    const toggleStart = this.copyHitRegion.end + 1;
+    const openStart = this.copyHitRegion.end + 1;
+    this.openHitRegion = { start: openStart, end: openStart + visibleWidth(openAction) };
+    const toggleStart = this.openHitRegion.end + 1;
     this.toggleHitRegion = { start: toggleStart, end: toggleStart + visibleWidth(toggleAction) };
-    return `${shownTitle}${gap}${copyAction} ${toggleAction}`;
+    return `${shownTitle}${gap}${copyAction} ${openAction} ${toggleAction}`;
   }
 
   private toggleMinimized(): void {
@@ -246,6 +267,27 @@ export class WorksDashboard implements Component, Focusable {
 
   private isHit(x: number, region: HeaderHitRegion | undefined): boolean {
     return region !== undefined && x >= region.start && x < region.end;
+  }
+
+  private async openInCursor(): Promise<void> {
+    if (this.opening) return;
+    this.opening = true;
+    this.message = "Opening repository in Cursor…";
+    this.messageColor = "warning";
+    this.tui.requestRender();
+    try {
+      await openRepository(this.cwd);
+      this.message = "Opened repository in Cursor.";
+      this.messageColor = "success";
+    } catch (error) {
+      const reason = error instanceof Error ? ` ${safeSingleLine(error.message)}` : "";
+      this.message = `Could not open Cursor. Check cursor is on PATH.${reason}`;
+      this.messageColor = "error";
+      if (!this.disposed) this.notify(this.message, "error");
+    } finally {
+      this.opening = false;
+      if (!this.disposed) this.tui.requestRender();
+    }
   }
 
   private async copyAllAsMarkdown(): Promise<void> {
@@ -272,7 +314,7 @@ export class WorksDashboard implements Component, Focusable {
   }
 
   private renderFooter(width: number): string {
-    const text = "C copy all · M minimize · configured ↑/↓ select · PgUp/PgDn scroll details · confirm toggles · cancel closes";
+    const text = "C copy all · O open Cursor · M minimize · configured ↑/↓ select · PgUp/PgDn scroll details · confirm toggles · cancel closes";
     return truncateToWidth(this.theme.fg("muted", text), width, "");
   }
 }

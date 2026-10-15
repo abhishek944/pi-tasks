@@ -1,5 +1,6 @@
 import { type KeybindingsManager, type Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, type Focusable, type TUI, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
+import type { GitStatusCache } from "../git-status.js";
 import type { TaskState } from "../state.js";
 export declare class WorksDashboard implements Component, Focusable {
     private readonly tui;
@@ -7,6 +8,9 @@ export declare class WorksDashboard implements Component, Focusable {
     private readonly keybindings;
     private readonly state;
     private readonly close;
+    private readonly cwd;
+    private readonly git;
+    private readonly notify;
     focused: boolean;
     private selectedKey;
     private scrollOffset;
@@ -16,12 +20,15 @@ export declare class WorksDashboard implements Component, Focusable {
     private message;
     private messageColor;
     private copying;
+    private opening;
     private minimized;
+    private readonly unsubscribeGit;
+    private openHitRegion;
     private copyHitRegion;
     private toggleHitRegion;
     private disposed;
     private readonly refreshTimer;
-    constructor(tui: TUI, theme: Theme, keybindings: KeybindingsManager, state: TaskState, close: () => void);
+    constructor(tui: TUI, theme: Theme, keybindings: KeybindingsManager, state: TaskState, close: () => void, cwd: string, git: GitStatusCache, notify: (message: string, type: "error") => void);
     render(width: number): string[];
     handleInput(data: string): void;
     handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined;
@@ -36,6 +43,7 @@ export declare class WorksDashboard implements Component, Focusable {
     private renderHeader;
     private toggleMinimized;
     private isHit;
+    private openInCursor;
     private copyAllAsMarkdown;
     private renderFooter;
 }

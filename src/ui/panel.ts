@@ -201,7 +201,7 @@ class TasksPanel implements Component {
     let title = "Works";
     if (this.placement === "floating" && hasOverflow) {
       title += this.tui.mode === "fullscreen"
-        ? ` · ${range} · wheel to scroll`
+        ? ` · ${range}`
         : ` · ${range} · latest · /works for all`;
     }
 

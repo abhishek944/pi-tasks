@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.2 - 2026-10-17
+
+- Remove the wheel-to-scroll hint from the floating panel title while keeping the row range and mouse scrolling unchanged.
+
 ## 0.8.1 - 2026-10-17
 
 - Reserve a slim right-hand progress column in the compact panel so long work and task names cannot obscure completion percentages.

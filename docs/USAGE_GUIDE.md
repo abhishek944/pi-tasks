@@ -15,6 +15,26 @@ The extension applies this guidance across all loaded skills and does not skip w
 
 Write `workInfo` and `taskInfo` in normal prose with full sentences and spaces between words. Conversational brevity modes do not apply to stored records; do not concatenate words to shorten them. This is model-facing guidance, not automatic repair of existing text.
 
+## Continue unfinished work automatically
+
+This is off by default and requires Pi 1.2.0+. Add the following to global `~/.pi/agent/settings.json` (or your custom agent directory) or a trusted project's `.pi/settings.json`, then run `/reload`:
+
+```json
+{
+  "pi-tasks": {
+    "autoContinue": {
+      "enabled": true
+    }
+  }
+}
+```
+
+Send a normal prompt to start. If the agent finishes with planned/active works or pending/active todos, it receives a message to continue and verify them. Blocked, completed, and cancelled records do not cause another continuation. Keep the parent work synchronized too, and record a genuine blocker reason in its information field before handing off.
+
+Press Escape/abort to stop. The extension will not restart from a monitor wake or another extension's message; send a new main prompt when you want it to resume. Failed runs also stop instead of being retried by this feature. Reloading or navigating session branches does not silently resume unfinished work.
+
+Omitting `maxContinuations` means no continuation limit: it can keep consuming tokens while unfinished records remain. Manual abort and all other stopping conditions still apply. To cap it, add a positive integer such as `"maxContinuations": 10`. After the configured number of extra continuations, the extension warns and hands control back without changing records. A fresh accepted main user run resets the limit; a rejected prompt or steering/follow-up input queued inside a running activity does not. Set `enabled` to `false` and reload to disable the feature. It checks recorded states, not whether every user requirement was captured or genuinely verified.
+
 ## Work tools
 
 ```text

@@ -37,6 +37,22 @@ Run `/works` to inspect full `workInfo` and `taskInfo` in an interactive overlay
 
 The panel defaults to the floating top-right layout. Its top border centers the current repository's Git branch and staged/unstaged/untracked file counts, refreshed asynchronously with a one-second cache. Clean repositories show `clean`. In fullscreen TUI mode, its title bar has clickable Copy, Open, and Minimize/Maximize actions, and you can scroll overflowing rows directly with the mouse wheel. Open runs `cursor .` in the current session directory (the Cursor CLI must be on PATH). Open `/works` to inspect every row or copy from the keyboard. Use `/works-panel minimize`, `/works-panel maximize`, or `/works-panel open` when mouse input is unavailable. In `/works`, press `o` to open Cursor. Switch layouts with `/works-panel floating`, `/works-panel widget`, or `/works-panel off`.
 
+## Optional auto-continuation
+
+On Pi 1.2.0 or newer, enable unfinished-work continuation in your global or trusted project `settings.json`:
+
+```json
+{
+  "pi-tasks": {
+    "autoContinue": { "enabled": true }
+  }
+}
+```
+
+It defaults off. Omit `maxContinuations` for no continuation limit, or add a positive integer such as `"maxContinuations": 10` to cap it. Unlimited continuation can consume tokens indefinitely while unfinished records remain; manual abort and the other stopping conditions still apply. After a normal user-requested run finishes, Pi continues while planned/active works or pending/active todos remain. Completed, blocked, and cancelled records are settled. Escape/abort stops the flow; only a fresh accepted main interactive or RPC run rearms it. Extension wakes do not rearm it or reset the limit. The limit counts requested continuations per fresh main user run, not dollars or tool calls. Queued steering/follow-up input does not reset it. Reload after editing settings.
+
+Auto-continuation uses Pi's native pre-settlement boundary, after queued work, retries, and compaction. It does not retry failed runs, run with unavailable tracking tools, or start work just because a session was restored. It never changes task statuses itself, and cannot independently prove completion. Older hosts retain ordinary tracking without this feature.
+
 See [the usage guide](docs/USAGE_GUIDE.md) and [reference](docs/REFERENCE.md).
 
 ## Development

@@ -21,10 +21,14 @@ During and after the attempt:
 - Keep the work active while required todos remain, blocked when progress cannot continue, and completed only when its required todos are complete.
 - Never create or update works, todos, loops, or monitors during /ask, /btw, or any BTW side thread.`;
 
+export function areTrackingToolsActive(pi: ExtensionAPI): boolean {
+  const active = new Set(pi.getActiveTools());
+  return REQUIRED_TRACKING_TOOLS.every((name) => active.has(name));
+}
+
 export function registerTrackingGuidance(pi: ExtensionAPI): void {
   pi.on("before_agent_start", (event) => {
-    const active = new Set(pi.getActiveTools());
-    if (!REQUIRED_TRACKING_TOOLS.every((name) => active.has(name))) return;
+    if (!areTrackingToolsActive(pi)) return;
     return { systemPrompt: `${event.systemPrompt}\n\n${TRACKING_GUIDANCE}` };
   });
 }

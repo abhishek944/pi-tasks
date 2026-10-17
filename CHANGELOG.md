@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added opt-in auto-continuation with an optional limit for unfinished session-branch works and todos using Pi 1.2's native pre-settlement boundary.
+- Respect manual aborts, failed runs, queued messages, and unavailable tracking tools; only fresh interactive/RPC input rearms the flow after suspension.
+- Added `pi-tasks.autoContinue.enabled` (default `false`) and optional `maxContinuations` (omission means unlimited) configuration with fail-closed validation.
+
 ## 0.6.0
 
 - Added centered repository Git status to the compact panel and `/works` top border, retained when minimized.

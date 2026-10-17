@@ -30,6 +30,18 @@ When all tracking tools are active, the extension adds hidden per-turn guidance 
 
 The guidance is not added when the tracking tools have been removed from the active tool set. Pi Ask removes them during `/ask`. Pi BTW executes its side conversation outside the main conversation. The guidance also explicitly forbids changing works, todos, loops, or monitors during either mode.
 
+## Auto-continuation
+
+Auto-continuation is optional and requires Pi 1.2.0 or newer. Configure `pi-tasks.autoContinue` in Pi's `settings.json`; the extension reads `pi.getSettings()` so trusted project settings override global settings. `enabled` defaults to `false`; `maxContinuations` is optional. Omission means no continuation limit; if supplied, it must be a positive safe integer. Explicit `null` is invalid. Invalid configuration disables the flow and reports a warning. Hosts without the new settings API keep normal task tracking with no automatic continuation.
+
+A fresh accepted main interactive/RPC run arms a new continuation epoch. Input is provisional until the run starts, so handled/rejected prompts cannot arm it. Extension/custom starts do not arm or reset it. Steering/follow-up messages queued inside an already-running activity do not themselves reset the cap. Session start/reload, tree navigation, and shutdown disarm it until fresh user input. Aborted or failed activity also suspends it. `agent_settled.aborted` covers aborts that skip the actionable boundary. Tracking tools must be active; side conversations must not start continuation.
+
+The synchronous `agent_before_settle` handler runs after native retries, compaction, and queued work. It requires a completed outcome, a non-aborted signal, no pending messages in either the boundary preview or runtime queue, and no continuation already requested by an earlier handler. Pi is still busy at this actionable boundary, so it does not require `ctx.isIdle()`. Instead it appends one custom-message draft and requests one native continuation; Pi owns committing it and honoring cancellation. No detached prompt, timer, background worker, or polling loop is created.
+
+Planned/active works and pending/active todos on the current branch are unfinished. Completed, blocked, and cancelled records are settled. A settled parent does not hide an unfinished child. The prompt includes a bounded preview of IDs, names and statuses, and directs the agent to list tools for full details. No records means no continuation. The extension never mutates statuses, verifies work independently, or treats a blocker label as proof of an actual dependency.
+
+When `maxContinuations` is supplied, at most that many extra continuations are requested per fresh accepted main user run. The next unfinished boundary warns once and suspends continuation; a fresh user prompt resets the cap. With no limit supplied, continuation can consume tokens indefinitely while unfinished records remain, until interrupted, failed, disabled or otherwise suspended. This is not a cost cap or a cap on native tool/retry requests, and another extension may independently request work. Settings changes take effect when Pi reloads effective settings, normally through `/reload`.
+
 ## Repository status and Cursor
 
 Both terminal views share a cwd-scoped asynchronous Git status cache, separate from persisted work/todo state. The top border centers `git <branch> · S<staged> U<unstaged> ?<untracked>`; zero counts collapse to `clean`, detached HEAD uses `@<shortcommit>`, and narrow frames shorten the branch first. The border label remains when minimized. Initial loading displays `git loading…`, non-repositories have a plain border, and initial read failures display `git unavailable`; refreshes and later failures retain the prior snapshot.

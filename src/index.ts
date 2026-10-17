@@ -1,5 +1,6 @@
 /** Session-scoped work and todo tracking for Pi. */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerTaskAutoContinue } from "./auto-continue.js";
 import { registerWorksCommand } from "./command.js";
 import { GitStatusCache } from "./git-status.js";
 import { openRepository } from "./open-repository.js";
@@ -17,6 +18,7 @@ export default function tasksExtension(pi: ExtensionAPI): void {
 
   registerTaskTools(pi, state);
   registerTrackingGuidance(pi);
+  registerTaskAutoContinue(pi, state);
   registerWorksCommand(pi, state, git);
   pi.registerCommand("works-panel", {
     description: "Set the works panel display mode",

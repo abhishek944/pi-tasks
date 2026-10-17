@@ -1,3 +1,4 @@
+import { registerTaskAutoContinue } from "./auto-continue.js";
 import { registerWorksCommand } from "./command.js";
 import { GitStatusCache } from "./git-status.js";
 import { openRepository } from "./open-repository.js";
@@ -13,6 +14,7 @@ export default function tasksExtension(pi) {
     panel = new TasksPanelHost(state, git);
     registerTaskTools(pi, state);
     registerTrackingGuidance(pi);
+    registerTaskAutoContinue(pi, state);
     registerWorksCommand(pi, state, git);
     pi.registerCommand("works-panel", {
         description: "Set the works panel display mode",

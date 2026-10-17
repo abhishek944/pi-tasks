@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.3 - 2026-10-18
+
+- Clarify tool and tracking guidance to request interim completion estimates during longer tasks after roughly 5–10 meaningful working steps or a milestone, rather than only at completion.
+- Keep estimates optional and evidence-based, with unknown values allowed and no enforced schedule or automatic percentage increases.
+
 ## 0.8.2 - 2026-10-17
 
 - Remove the wheel-to-scroll hint from the floating panel title while keeping the row range and mouse scrolling unchanged.

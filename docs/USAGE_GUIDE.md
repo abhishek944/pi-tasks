@@ -8,8 +8,9 @@ For every normal request that starts or continues work, Pi should:
 2. Create or update the relevant work and mark it active.
 3. Create or update detailed todos for the requested scope.
 4. Mark the current todo active before starting it.
-5. Mark the todo completed, blocked, or cancelled after the attempt.
-6. Complete the work only when its required todos are complete.
+5. During longer tasks, report interim progress after roughly 5–10 meaningful working steps or a milestone, when an estimate is possible.
+6. Mark the todo completed, blocked, or cancelled after the attempt.
+7. Complete the work only when its required todos are complete.
 
 The extension applies this guidance across all loaded skills and does not skip work merely because it looks small. It does not update tracking during `/ask`, `/btw`, or BTW side threads.
 
@@ -66,7 +67,7 @@ TodoDelete taskId="T1"
 
 ### Completion percentages
 
-Pi updates each task’s `completionPercent` after meaningful progress. These are approximate AI-reported values, not a fixed percentage for each status and not a time prediction. Use an integer 0–100 or `null` for unknown. Completed status means verified completion and displays 100%; 100 without completed status is rejected. Partial progress requires reopening a completed task; reopening without a fresh estimate makes it unknown. Blocking retains the current estimate.
+During longer tasks, Pi should include a `completionPercent` estimate in `TodoUpdate` after roughly 5–10 meaningful working steps or a milestone, rather than waiting until completion or only updating status. Explain the evidence and remaining work in `taskInfo`. Estimates remain optional: use `null` when unknown, and leave a percentage unchanged if there is no new evidence. This is model-facing guidance, not an enforced schedule or an automatic percentage increase. These are approximate AI-reported values, not a fixed percentage for each status and not a time prediction. Use an integer 0–100 or `null` for unknown. Completed status means verified completion and displays 100%; 100 without completed status is rejected. Partial progress requires reopening a completed task; reopening without a fresh estimate makes it unknown. Blocking retains the current estimate.
 
 Work progress averages all non-cancelled tasks equally and rounds down. Tasks at 100%, 40%, 0%, 0% produce 35% work completion, not 25% based on finished-task counts. If any eligible task lacks an estimate, the work displays `—`. No eligible tasks also means unknown unless the work itself is verified complete. A completed parent never hides unfinished task progress. Existing sessions retain their records; legacy completed tasks display 100%, while other missing estimates remain unknown.
 

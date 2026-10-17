@@ -26,7 +26,7 @@ The public list shape assembles each work with `tasks: Todo[]`; tasks are stored
 
 ### Completion progress
 
-`TodoCreate` and `TodoUpdate` accept optional `completionPercent`: an integer from 0 through 100, or `null` to clear an obsolete estimate. Omission preserves an existing estimate on updates. The AI reports approximate progress based on completed effort and verification, explaining the evidence and remaining scope in `taskInfo`; status alone never implies an arbitrary partial percentage. No new tool or extra model call is added.
+`TodoCreate` and `TodoUpdate` accept optional `completionPercent`: an integer from 0 through 100, or `null` to clear an obsolete estimate. Omission preserves an existing estimate on updates. For longer tasks, the guidance asks the AI to include interim estimates in `TodoUpdate` after roughly 5–10 meaningful working steps or a milestone, not just at completion or in status-only updates. The AI reports approximate progress based on completed effort and verification, explaining the evidence and remaining scope in `taskInfo`; status alone never implies an arbitrary partial percentage. Estimates remain optional; use `null` when unknown and do not increase a percentage without new evidence. This cadence is guidance, not a runtime timer or enforced tool-call count. No new tool or extra model call is added.
 
 - Completed tasks normalize to 100%; explicit partial progress with completed status is rejected. Explicit 100 requires completed status. Completion remains an agent assertion after verification, not an independent extension proof.
 - Moving a partial task to blocked retains its progress. Reopening a completed task without a new estimate becomes unknown rather than retaining 100%.

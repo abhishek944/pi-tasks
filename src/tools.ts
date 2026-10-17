@@ -97,11 +97,11 @@ export function registerTaskTools(pi: ExtensionAPI, state: TaskState): void {
   pi.registerTool({
     name: "TodoCreate",
     label: "TodoCreate",
-    description: `Create a todo under an existing work, optionally reporting approximate completionPercent (0 for known unstarted work, null for unknown). taskInfo must contain enough detailed context, scope, constraints, expected outcome, and verification guidance to execute the task without guessing. ${DETAILS_GUIDANCE}`,
+    description: `Create a todo under an existing work, optionally reporting approximate completionPercent (0 for known unstarted work, null for unknown). For longer tasks, use TodoUpdate for interim estimates after roughly 5–10 meaningful working steps or a milestone; do not wait until completion. taskInfo must contain enough detailed context, scope, constraints, expected outcome, and verification guidance to execute the task without guessing. ${DETAILS_GUIDANCE}`,
     promptSnippet: "Create detailed todos under the current work before implementation",
     promptGuidelines: [
       "Use TodoCreate only under an existing work and only for actionable main-conversation work; never use it during /ask or /btw.",
-      "Keep taskInfo detailed, current, and self-contained. Report completionPercent from actual progress; do not infer partial completion just from status.",
+      "Keep taskInfo detailed, current, and self-contained. completionPercent is optional; estimate from actual progress, use null when unknown, and do not infer partial completion just from status. For longer tasks, report interim estimates through TodoUpdate after roughly 5–10 meaningful working steps or a milestone.",
       DETAILS_GUIDANCE,
     ],
     parameters: Type.Object({
@@ -142,9 +142,9 @@ export function registerTaskTools(pi: ExtensionAPI, state: TaskState): void {
   pi.registerTool({
     name: "TodoUpdate",
     label: "TodoUpdate",
-    description: `Update a todo's name, detailed information, status, or completionPercent. Report approximate progress after meaningful work and explain evidence in taskInfo; blocking retains progress. Reserve completed/100 for verified completion. ${DETAILS_GUIDANCE}`,
+    description: `Update a todo's name, detailed information, status, or completionPercent. For longer tasks, include an optional completionPercent estimate after roughly 5–10 meaningful working steps or a milestone, not just at completion or in status-only updates. Explain evidence and remaining work in taskInfo; use null when unknown and never increase a percentage without evidence. Blocking retains progress. Reserve completed/100 for verified completion. ${DETAILS_GUIDANCE}`,
     promptSnippet: "Keep todo status and detailed context synchronized with active work",
-    promptGuidelines: ["Use TodoUpdate immediately before and after working on a todo in the main conversation; never update tracking during /ask or /btw.", "Update completionPercent after meaningful progress with evidence in taskInfo. Use null to clear an obsolete estimate; only verified completed tasks may reach 100. Work completion is calculated automatically from tasks.", DETAILS_GUIDANCE],
+    promptGuidelines: ["Use TodoUpdate immediately before and after working on a todo in the main conversation; never update tracking during /ask or /btw.", "During longer tasks, include an evidence-based completionPercent estimate after roughly 5–10 meaningful working steps or a milestone; do not wait until completion or only update status. Estimates remain optional: use null when unknown, and leave a percentage unchanged if there is no new evidence. Explain evidence and remaining work in taskInfo; only verified completed tasks may reach 100. Work completion is calculated automatically from tasks.", DETAILS_GUIDANCE],
     parameters: Type.Object({
       taskId: Type.String(),
       taskName: Type.Optional(NameSchema),

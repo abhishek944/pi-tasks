@@ -34,7 +34,7 @@ The public list shape assembles each work with `tasks: Todo[]`; tasks are stored
 - Any unknown eligible task makes the work unknown (`—`); unknown is not silently 0. With no eligible tasks, work is unknown unless its own status is completed, then 100%.
 - A completed parent never overrides unfinished child progress. Work progress reaches 100 only when all eligible tasks are completed. Progress never changes statuses or auto-continuation eligibility.
 - Optional progress fields are additive to version-1 branch events. Legacy completed tasks show 100%; other legacy tasks remain unknown until reported. Invalid optional progress is sanitized on replay without discarding the task.
-- Dashboard, compact panel, list output and copied Markdown share these calculations. Small `· N%` labels leave layout/navigation unchanged. Percentages do not predict remaining time; no subtasks, weights or sidebar are added.
+- Dashboard, compact panel, list output and copied Markdown share these calculations. The compact panel reserves a narrow right-hand percentage column with a divider; names truncate independently. `/works` retains inline `· N%` labels and unchanged navigation. Percentages do not predict remaining time; no subtasks, weights or separate navigation sidebar are added.
 
 ## Tracking behavior
 

@@ -6,6 +6,8 @@ import { openRepository } from "../open-repository.js";
 import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import { safeSingleLine } from "../text.js";
 const EMPTY_COMPONENT = { render: () => [], invalidate: () => { } };
+const PROGRESS_VALUE_WIDTH = 4;
+const PROGRESS_COLUMN_WIDTH = PROGRESS_VALUE_WIDTH + 3;
 export class TasksPanelHost {
     state;
     git;
@@ -145,14 +147,18 @@ class TasksPanel {
                 border(innerWidth, "bottom", this.theme),
             ].map((line) => `${leftPad}${line}`);
         }
+        const contentWidth = innerWidth - PROGRESS_COLUMN_WIDTH;
         const content = [];
         if (works.length === 0)
-            content.push(this.theme.fg("muted", "No works yet."));
+            content.push(progressColumn(this.theme.fg("muted", "No works yet."), null, innerWidth, this.theme));
         for (const work of works) {
             const completed = work.tasks.filter((todo) => todo.status === "completed").length;
-            content.push(workSummaryLine(work.status, work.workName, workCompletion(work), `${completed}/${work.tasks.length}`, innerWidth, this.theme));
-            for (const todo of work.tasks)
-                content.push(`  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", progressName(todo.taskName, taskCompletion(todo), innerWidth - 4))}`);
+            const summary = workSummaryLine(work.status, work.workName, `${completed}/${work.tasks.length}`, contentWidth, this.theme);
+            content.push(progressColumn(summary, workCompletion(work), innerWidth, this.theme));
+            for (const todo of work.tasks) {
+                const label = `  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(todo.taskName))}`;
+                content.push(progressColumn(label, taskCompletion(todo), innerWidth, this.theme));
+            }
         }
         this.contentLength = content.length;
         const terminalRows = this.tui.terminal.rows || process.stdout.rows || 30;
@@ -180,9 +186,9 @@ class TasksPanel {
         const lines = [
             gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
             frame(header, innerWidth, this.theme),
-            rule(innerWidth, this.theme),
+            this.theme.fg("border", `├${"─".repeat(contentWidth + 1)}┬${"─".repeat(PROGRESS_VALUE_WIDTH + 1)}┤`),
             ...shown.map((line) => frame(line, innerWidth, this.theme)),
-            border(innerWidth, "bottom", this.theme),
+            this.theme.fg("border", `└${"─".repeat(contentWidth + 1)}┴${"─".repeat(PROGRESS_VALUE_WIDTH + 1)}┘`),
         ];
         return lines.map((line) => `${leftPad}${line}`);
     }
@@ -319,10 +325,17 @@ export function progressName(name, completion, width) {
     const suffix = ` · ${formatCompletion(completion)}`;
     return `${truncateToWidth(safeSingleLine(name), Math.max(0, width - visibleWidth(suffix)), "…")}${suffix}`;
 }
-function workSummaryLine(status, name, completion, count, width, theme) {
+function progressColumn(content, completion, width, theme) {
+    const contentWidth = width - PROGRESS_COLUMN_WIDTH;
+    const left = truncateToWidth(content, contentWidth, "…");
+    const padding = " ".repeat(Math.max(0, contentWidth - visibleWidth(left)));
+    const value = theme.fg(completion === null ? "muted" : "accent", formatCompletion(completion).padStart(PROGRESS_VALUE_WIDTH));
+    return `${left}${padding}${theme.fg("border", " │ ")}${value}`;
+}
+function workSummaryLine(status, name, count, width, theme) {
     const right = theme.fg("dim", count);
     const leftWidth = Math.max(0, width - visibleWidth(right) - 1);
-    const left = `${workIcon(status, theme)} ${theme.fg("text", progressName(name, completion, leftWidth - 2))}`;
+    const left = `${workIcon(status, theme)} ${theme.fg("text", safeSingleLine(name))}`;
     const shownLeft = truncateToWidth(left, leftWidth, "…");
     const gap = " ".repeat(Math.max(1, width - visibleWidth(shownLeft) - visibleWidth(right)));
     return `${shownLeft}${gap}${right}`;

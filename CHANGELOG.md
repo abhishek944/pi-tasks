@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 - 2026-10-17
+
+- Reserve a slim right-hand progress column in the compact panel so long work and task names cannot obscure completion percentages.
+
 ## 0.8.0 - 2026-10-17
 
 - Added optional AI-reported `completionPercent` to existing TodoCreate/TodoUpdate tools and persisted branch state.

@@ -17,7 +17,7 @@ The coordination model is intentionally small: a work is the overall outcome, a 
 ## Install
 
 ```bash
-pi install npm:@abhishek944/pi-tasks@0.8.0
+pi install npm:@abhishek944/pi-tasks@0.8.1
 ```
 
 Restart Pi or run `/reload`.
@@ -36,7 +36,7 @@ WorkUpdate workId="W1" status="completed"
 
 Run `/works` to inspect full `workInfo` and `taskInfo` in an interactive overlay.
 
-Pi reports approximate task progress through the existing `TodoCreate`/`TodoUpdate` tools using optional `completionPercent` (an integer from 0 to 100, or `null` for unknown). Work progress is the equal average of non-cancelled tasks, rounded down—not the fraction of finished tasks. For example, task values 100, 40, 0, 0 give work progress 35%. A missing estimate makes work progress unknown (`—`); blocked tasks retain their estimate. Completed tasks are 100%; reporting 100 without completed status is rejected. These percentages are estimates, not time predictions. The current layout and keyboard controls are unchanged.
+Pi reports approximate task progress through the existing `TodoCreate`/`TodoUpdate` tools using optional `completionPercent` (an integer from 0 to 100, or `null` for unknown). Work progress is the equal average of non-cancelled tasks, rounded down—not the fraction of finished tasks. For example, task values 100, 40, 0, 0 give work progress 35%. A missing estimate makes work progress unknown (`—`); blocked tasks retain their estimate. Completed tasks are 100%; reporting 100 without completed status is rejected. These percentages are estimates, not time predictions. The floating panel keeps percentages in a reserved right-hand column so long names cannot hide them. Existing keyboard controls are unchanged.
 
 The panel defaults to the floating top-right layout. Its top border centers the current repository's Git branch and staged/unstaged/untracked file counts, refreshed asynchronously with a one-second cache. Clean repositories show `clean`. In fullscreen TUI mode, its title bar has clickable Copy, Open, and Minimize/Maximize actions, and you can scroll overflowing rows directly with the mouse wheel. Open runs `cursor .` in the current session directory (the Cursor CLI must be on PATH). Open `/works` to inspect every row or copy from the keyboard. Use `/works-panel minimize`, `/works-panel maximize`, or `/works-panel open` when mouse input is unavailable. In `/works`, press `o` to open Cursor. Switch layouts with `/works-panel floating`, `/works-panel widget`, or `/works-panel off`.
 

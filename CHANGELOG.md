@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0 - 2026-10-17
+
+- Added optional AI-reported `completionPercent` to existing TodoCreate/TodoUpdate tools and persisted branch state.
+- Show task completion and the equal average of non-cancelled tasks for works in existing panels, details, lists and Markdown export; preserve the current layout and controls.
+- Keep unknown progress explicit, retain blocked-task estimates, and reserve 100% for completed tasks without letting parent status conceal unfinished children.
+
 ## 0.7.0 - 2026-10-17
 
 - Added opt-in auto-continuation with an optional limit for unfinished session-branch works and todos using Pi 1.2's native pre-settlement boundary.

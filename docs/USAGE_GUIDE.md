@@ -52,15 +52,23 @@ WorkDelete workId="W1"
 ## Todo tools
 
 ```text
-TodoCreate workId="W1" taskName="Inspect token flow" taskInfo="Detailed context..."
+TodoCreate workId="W1" taskName="Inspect token flow" taskInfo="Detailed context..." completionPercent=0
 TodoList workId="W1"
 TodoList status="active"
 TodoList workId="W1" limit=10
-TodoUpdate taskId="T1" status="completed" taskInfo="Detailed outcome..."
+TodoUpdate taskId="T1" status="active" completionPercent=40 taskInfo="Inspection is complete; implementation and verification remain."
+TodoUpdate taskId="T1" status="completed" taskInfo="Detailed verified outcome..."
+TodoUpdate taskId="T2" completionPercent=null taskInfo="The scope changed; the previous estimate is no longer reliable."
 TodoDelete taskId="T1"
 ```
 
 `TodoList` returns all matching todos when `limit` is omitted. A positive integer `limit` selects the newest matching todos after filters, displayed oldest-to-newest. The result shows how many todos were returned and how many matched in total. Both list tools can still truncate very long text output at 50KB or 2,000 lines.
+
+### Completion percentages
+
+Pi updates each task’s `completionPercent` after meaningful progress. These are approximate AI-reported values, not a fixed percentage for each status and not a time prediction. Use an integer 0–100 or `null` for unknown. Completed status means verified completion and displays 100%; 100 without completed status is rejected. Partial progress requires reopening a completed task; reopening without a fresh estimate makes it unknown. Blocking retains the current estimate.
+
+Work progress averages all non-cancelled tasks equally and rounds down. Tasks at 100%, 40%, 0%, 0% produce 35% work completion, not 25% based on finished-task counts. If any eligible task lacks an estimate, the work displays `—`. No eligible tasks also means unknown unless the work itself is verified complete. A completed parent never hides unfinished task progress. Existing sessions retain their records; legacy completed tasks display 100%, while other missing estimates remain unknown.
 
 ## TUI
 

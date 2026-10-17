@@ -26,8 +26,8 @@ export declare class TaskState {
     createWork(workName: string, workInfo: string, status?: WorkStatus): Work;
     updateWork(workId: string, patch: Partial<Pick<Work, "workName" | "workInfo" | "status">>): Work;
     deleteWork(workId: string): boolean;
-    createTodo(workId: string, taskName: string, taskInfo: string, status?: TodoStatus): Todo;
-    updateTodo(taskId: string, patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status">>): Todo;
+    createTodo(workId: string, taskName: string, taskInfo: string, status?: TodoStatus, completionPercent?: number | null): Todo;
+    updateTodo(taskId: string, patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status" | "completionPercent">>): Todo;
     deleteTodo(taskId: string): boolean;
     private record;
     private apply;

@@ -7,7 +7,7 @@ It adds:
 - `WorkCreate`, `WorkList`, `WorkUpdate`, and `WorkDelete`
 - `TodoCreate`, `TodoList`, `TodoUpdate`, and `TodoDelete`
 - `/works`, a detailed floating dashboard modeled after `pi-loop-monitor`'s `/monitors`
-- a compact floating top-right panel with work and todo names
+- a compact floating top-right panel with work and todo names and completion percentages
 - main-conversation guidance that keeps normal requested work current across every Pi skill
 
 Works and todos follow the active Pi session branch. Forking or navigating the session tree restores the state for that branch. `/ask` and `/btw` conversations do not update works, todos, loops, or monitors.
@@ -17,7 +17,7 @@ The coordination model is intentionally small: a work is the overall outcome, a 
 ## Install
 
 ```bash
-pi install npm:@abhishek944/pi-tasks@0.7.0
+pi install npm:@abhishek944/pi-tasks@0.8.0
 ```
 
 Restart Pi or run `/reload`.
@@ -29,11 +29,14 @@ The extension guides Pi to manage work automatically for normal requests that st
 ```text
 WorkCreate workName="Add task tracking" workInfo="Detailed goal, scope, constraints, and expected outcome" status="active"
 TodoCreate workId="W1" taskName="Implement state" taskInfo="Detailed task context and expected result" status="active"
+TodoUpdate taskId="T1" completionPercent=40 taskInfo="The state changes are implemented; rendering and verification remain."
 TodoUpdate taskId="T1" status="completed" taskInfo="Implementation is complete; typecheck and build passed."
 WorkUpdate workId="W1" status="completed"
 ```
 
 Run `/works` to inspect full `workInfo` and `taskInfo` in an interactive overlay.
+
+Pi reports approximate task progress through the existing `TodoCreate`/`TodoUpdate` tools using optional `completionPercent` (an integer from 0 to 100, or `null` for unknown). Work progress is the equal average of non-cancelled tasks, rounded down—not the fraction of finished tasks. For example, task values 100, 40, 0, 0 give work progress 35%. A missing estimate makes work progress unknown (`—`); blocked tasks retain their estimate. Completed tasks are 100%; reporting 100 without completed status is rejected. These percentages are estimates, not time predictions. The current layout and keyboard controls are unchanged.
 
 The panel defaults to the floating top-right layout. Its top border centers the current repository's Git branch and staged/unstaged/untracked file counts, refreshed asynchronously with a one-second cache. Clean repositories show `clean`. In fullscreen TUI mode, its title bar has clickable Copy, Open, and Minimize/Maximize actions, and you can scroll overflowing rows directly with the mouse wheel. Open runs `cursor .` in the current session directory (the Cursor CLI must be on PATH). Open `/works` to inspect every row or copy from the keyboard. Use `/works-panel minimize`, `/works-panel maximize`, or `/works-panel open` when mouse input is unavailable. In `/works`, press `o` to open Cursor. Switch layouts with `/works-panel floating`, `/works-panel widget`, or `/works-panel off`.
 

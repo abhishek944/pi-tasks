@@ -20,9 +20,21 @@ Limits:
 
 A work contains `workId`, `workName`, `workInfo`, `status`, `createdAt`, and `updatedAt`. Work status is `planned`, `active`, `blocked`, `completed`, or `cancelled`.
 
-A todo contains `taskId`, `workId`, `taskName`, `taskInfo`, `status`, `createdAt`, and `updatedAt`. Todo status is `pending`, `active`, `blocked`, `completed`, or `cancelled`.
+A todo contains `taskId`, `workId`, `taskName`, `taskInfo`, `status`, optional `completionPercent`, `createdAt`, and `updatedAt`. Todo status is `pending`, `active`, `blocked`, `completed`, or `cancelled`.
 
-The public list shape assembles each work with `tasks: Todo[]`; tasks are stored separately to avoid duplicate state.
+The public list shape assembles each work with `tasks: Todo[]`; tasks are stored separately to avoid duplicate state. Work progress is derived, not independently stored or editable.
+
+### Completion progress
+
+`TodoCreate` and `TodoUpdate` accept optional `completionPercent`: an integer from 0 through 100, or `null` to clear an obsolete estimate. Omission preserves an existing estimate on updates. The AI reports approximate progress based on completed effort and verification, explaining the evidence and remaining scope in `taskInfo`; status alone never implies an arbitrary partial percentage. No new tool or extra model call is added.
+
+- Completed tasks normalize to 100%; explicit partial progress with completed status is rejected. Explicit 100 requires completed status. Completion remains an agent assertion after verification, not an independent extension proof.
+- Moving a partial task to blocked retains its progress. Reopening a completed task without a new estimate becomes unknown rather than retaining 100%.
+- A work is the equal arithmetic mean of all non-cancelled task percentages, rounded down for display. For example, 100, 40, 0, 0 yields 35%.
+- Any unknown eligible task makes the work unknown (`—`); unknown is not silently 0. With no eligible tasks, work is unknown unless its own status is completed, then 100%.
+- A completed parent never overrides unfinished child progress. Work progress reaches 100 only when all eligible tasks are completed. Progress never changes statuses or auto-continuation eligibility.
+- Optional progress fields are additive to version-1 branch events. Legacy completed tasks show 100%; other legacy tasks remain unknown until reported. Invalid optional progress is sanitized on replay without discarding the task.
+- Dashboard, compact panel, list output and copied Markdown share these calculations. Small `· N%` labels leave layout/navigation unchanged. Percentages do not predict remaining time; no subtasks, weights or sidebar are added.
 
 ## Tracking behavior
 

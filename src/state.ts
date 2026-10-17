@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { taskCompletion } from "./progress.js";
 import { safeSingleLine } from "./text.js";
 import type { TaskEvent, Todo, TodoStatus, Work, WorkStatus, WorkWithTodos } from "./types.js";
 
@@ -88,9 +89,10 @@ export class TaskState {
     return true;
   }
 
-  createTodo(workId: string, taskName: string, taskInfo: string, status: TodoStatus = "pending"): Todo {
+  createTodo(workId: string, taskName: string, taskInfo: string, status: TodoStatus = "pending", completionPercent?: number | null): Todo {
     if (!this.works.has(workId)) throw new Error(`Work ${workId} not found.`);
     if (this.todos.size >= MAX_TODOS) throw new Error(`Maximum of ${MAX_TODOS} todos reached.`);
+    validateCompletion(status, completionPercent);
     const now = Date.now();
     const todo: Todo = {
       taskId: `T${this.nextTaskId}`,
@@ -98,6 +100,7 @@ export class TaskState {
       taskName: requiredName(taskName, "taskName"),
       taskInfo: requiredText(taskInfo, "taskInfo"),
       status,
+      completionPercent: status === "completed" ? 100 : completionPercent ?? null,
       createdAt: now,
       updatedAt: now,
     };
@@ -105,12 +108,15 @@ export class TaskState {
     return { ...todo };
   }
 
-  updateTodo(taskId: string, patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status">>): Todo {
-    if (!this.todos.has(taskId)) throw new Error(`Todo ${taskId} not found.`);
+  updateTodo(taskId: string, patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status" | "completionPercent">>): Todo {
+    const current = this.todos.get(taskId);
+    if (!current) throw new Error(`Todo ${taskId} not found.`);
+    validateCompletion(patch.status ?? current.status, patch.completionPercent);
     const normalized = compactPatch({
       taskName: patch.taskName === undefined ? undefined : requiredName(patch.taskName, "taskName"),
       taskInfo: patch.taskInfo === undefined ? undefined : requiredText(patch.taskInfo, "taskInfo"),
       status: patch.status,
+      completionPercent: patch.completionPercent,
     });
     if (Object.keys(normalized).length === 0) throw new Error("TodoUpdate requires at least one changed field.");
     this.record({ version: 1, type: "todo-updated", at: Date.now(), taskId, patch: normalized });
@@ -155,18 +161,26 @@ export class TaskState {
       case "todo-created":
         assertId(event.todo.taskId, "T");
         if (typeof event.todo.workId !== "string" || typeof event.todo.taskName !== "string" || typeof event.todo.taskInfo !== "string" || !isTodoStatus(event.todo.status)) throw new Error("Malformed todo entry.");
-        if (this.works.has(event.todo.workId)) this.todos.set(event.todo.taskId, { ...event.todo, taskName: safeSingleLine(event.todo.taskName) });
+        if (this.works.has(event.todo.workId)) this.todos.set(event.todo.taskId, {
+          ...event.todo,
+          taskName: safeSingleLine(event.todo.taskName),
+          completionPercent: taskCompletion(event.todo),
+        });
         this.nextTaskId = Math.max(this.nextTaskId, numericId(event.todo.taskId) + 1);
         break;
       case "todo-updated": {
         const todo = this.todos.get(event.taskId);
-        if (todo) this.todos.set(event.taskId, {
-          ...todo,
-          ...(typeof event.patch.taskName === "string" ? { taskName: safeSingleLine(event.patch.taskName) } : {}),
-          ...(typeof event.patch.taskInfo === "string" ? { taskInfo: event.patch.taskInfo } : {}),
-          ...(isTodoStatus(event.patch.status) ? { status: event.patch.status } : {}),
-          updatedAt: event.at,
-        });
+        if (todo) {
+          const updated = {
+            ...todo,
+            ...(typeof event.patch.taskName === "string" ? { taskName: safeSingleLine(event.patch.taskName) } : {}),
+            ...(typeof event.patch.taskInfo === "string" ? { taskInfo: event.patch.taskInfo } : {}),
+            ...(isTodoStatus(event.patch.status) ? { status: event.patch.status } : {}),
+            ...(event.patch.completionPercent !== undefined ? { completionPercent: event.patch.completionPercent } : {}),
+            updatedAt: event.at,
+          };
+          this.todos.set(event.taskId, { ...updated, completionPercent: taskCompletion(updated) });
+        }
         break;
       }
       case "todo-deleted":
@@ -174,6 +188,13 @@ export class TaskState {
         break;
     }
   }
+}
+
+function validateCompletion(status: TodoStatus, value: number | null | undefined): void {
+  if (value === undefined || value === null) return;
+  if (!Number.isInteger(value) || value < 0 || value > 100) throw new Error("completionPercent must be an integer from 0 to 100, or null for unknown.");
+  if (value === 100 && status !== "completed") throw new Error("100% requires verified completion. Set status to completed after verification.");
+  if (status === "completed" && value !== 100) throw new Error("Completed tasks have 100% progress. Reopen the task before reporting partial progress.");
 }
 
 function requiredText(value: string, field: string): string {

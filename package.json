@@ -1,6 +1,6 @@
 {
   "name": "@abhishek944/pi-tasks",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Session-scoped work and todo tracking for Pi.",
   "license": "MIT",
   "type": "module",

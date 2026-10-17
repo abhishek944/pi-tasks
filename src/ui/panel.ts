@@ -4,6 +4,7 @@ import { type Component, type OverlayHandle, type TUI, type TuiMouseEvent, type 
 import type { GitSnapshot, GitStatusCache } from "../git-status.js";
 import { formatWorksMarkdown } from "../markdown.js";
 import { openRepository } from "../open-repository.js";
+import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import type { TaskState } from "../state.js";
 import { safeSingleLine } from "../text.js";
 import type { TodoStatus, WorkStatus } from "../types.js";
@@ -172,8 +173,8 @@ class TasksPanel implements Component {
     if (works.length === 0) content.push(this.theme.fg("muted", "No works yet."));
     for (const work of works) {
       const completed = work.tasks.filter((todo) => todo.status === "completed").length;
-      content.push(workSummaryLine(work.status, work.workName, `${completed}/${work.tasks.length}`, innerWidth, this.theme));
-      for (const todo of work.tasks) content.push(`  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", todo.taskName)}`);
+      content.push(workSummaryLine(work.status, work.workName, workCompletion(work), `${completed}/${work.tasks.length}`, innerWidth, this.theme));
+      for (const todo of work.tasks) content.push(`  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", progressName(todo.taskName, taskCompletion(todo), innerWidth - 4))}`);
     }
 
     this.contentLength = content.length;
@@ -334,10 +335,15 @@ class TasksPanel implements Component {
   }
 }
 
-function workSummaryLine(status: WorkStatus, name: string, count: string, width: number, theme: Theme): string {
-  const left = `${workIcon(status, theme)} ${theme.fg("text", name)}`;
+export function progressName(name: string, completion: number | null, width: number): string {
+  const suffix = ` · ${formatCompletion(completion)}`;
+  return `${truncateToWidth(safeSingleLine(name), Math.max(0, width - visibleWidth(suffix)), "…")}${suffix}`;
+}
+
+function workSummaryLine(status: WorkStatus, name: string, completion: number | null, count: string, width: number, theme: Theme): string {
   const right = theme.fg("dim", count);
   const leftWidth = Math.max(0, width - visibleWidth(right) - 1);
+  const left = `${workIcon(status, theme)} ${theme.fg("text", progressName(name, completion, leftWidth - 2))}`;
   const shownLeft = truncateToWidth(left, leftWidth, "…");
   const gap = " ".repeat(Math.max(1, width - visibleWidth(shownLeft) - visibleWidth(right)));
   return `${shownLeft}${gap}${right}`;

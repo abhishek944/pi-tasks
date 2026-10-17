@@ -14,6 +14,7 @@ export interface Todo {
     taskName: string;
     taskInfo: string;
     status: TodoStatus;
+    completionPercent?: number | null;
     createdAt: number;
     updatedAt: number;
 }
@@ -46,7 +47,7 @@ export type TaskEvent = {
     type: "todo-updated";
     at: number;
     taskId: string;
-    patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status">>;
+    patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status" | "completionPercent">>;
 } | {
     version: 1;
     type: "todo-deleted";

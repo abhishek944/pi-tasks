@@ -1,3 +1,4 @@
+import { formatCompletion, taskCompletion, workCompletion } from "./progress.js";
 import { safeMultiline, safeSingleLine } from "./text.js";
 import type { WorkWithTodos } from "./types.js";
 
@@ -10,6 +11,7 @@ export function formatWorksMarkdown(works: WorkWithTodos[]): string {
       `## ${work.workId} — ${escapeMarkdownInline(safeSingleLine(work.workName))}`,
       "",
       `**Status:** ${work.status}`,
+      `**Completion:** ${formatCompletion(workCompletion(work))}`,
       "",
       "### Details",
       "",
@@ -27,6 +29,7 @@ export function formatWorksMarkdown(works: WorkWithTodos[]): string {
         `#### ${todo.taskId} — ${escapeMarkdownInline(safeSingleLine(todo.taskName))}`,
         "",
         `**Status:** ${todo.status}`,
+        `**Completion:** ${formatCompletion(taskCompletion(todo))}`,
         "",
         markdownBody(todo.taskInfo),
         "",

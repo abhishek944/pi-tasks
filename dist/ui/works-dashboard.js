@@ -2,8 +2,9 @@ import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, } from "@earendil-works/pi-tui";
 import { formatWorksMarkdown } from "../markdown.js";
 import { openRepository } from "../open-repository.js";
+import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import { safeMultiline, safeSingleLine } from "../text.js";
-import { border, frame, gitBorder, rule, todoIcon, workIcon } from "./panel.js";
+import { border, frame, gitBorder, progressName, rule, todoIcon, workIcon } from "./panel.js";
 const CHROME_LINES = 8;
 export class WorksDashboard {
     tui;
@@ -164,7 +165,7 @@ export class WorksDashboard {
         for (const work of works) {
             items.push({ key: `work:${work.workId}`, kind: "work", work });
             for (const todo of work.tasks)
-                items.push({ key: `todo:${todo.taskId}`, kind: "todo", todo, workName: work.workName });
+                items.push({ key: `todo:${todo.taskId}`, kind: "todo", todo, work });
         }
         return items;
     }
@@ -193,9 +194,13 @@ export class WorksDashboard {
         const prefix = selected ? this.theme.fg("accent", "▶ ") : "  ";
         if (item.kind === "work") {
             const done = item.work.tasks.filter((todo) => todo.status === "completed").length;
-            return truncateToWidth(`${prefix}${workIcon(item.work.status, this.theme)} ${this.theme.bold(safeSingleLine(item.work.workName))} ${this.theme.fg("dim", `${item.work.workId} · ${item.work.status} · ${done}/${item.work.tasks.length}`)}`, width, "");
+            const metadata = this.theme.fg("dim", `${item.work.workId} · ${item.work.status} · ${done}/${item.work.tasks.length}`);
+            const nameWidth = width - visibleWidth(prefix) - 3 - visibleWidth(metadata);
+            return truncateToWidth(`${prefix}${workIcon(item.work.status, this.theme)} ${this.theme.bold(progressName(item.work.workName, workCompletion(item.work), nameWidth))} ${metadata}`, width, "");
         }
-        return truncateToWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${safeSingleLine(item.todo.taskName)} ${this.theme.fg("dim", `${item.todo.taskId} · ${item.todo.status}`)}`, width, "");
+        const metadata = this.theme.fg("dim", `${item.todo.taskId} · ${item.todo.status}`);
+        const nameWidth = width - visibleWidth(prefix) - 5 - visibleWidth(metadata);
+        return truncateToWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${progressName(item.todo.taskName, taskCompletion(item.todo), nameWidth)} ${metadata}`, width, "");
     }
     renderDetails(items, width, budget) {
         if (!this.detailsVisible || budget === 0)
@@ -203,9 +208,24 @@ export class WorksDashboard {
         const item = items.find((candidate) => candidate.key === this.selectedKey);
         if (!item)
             return [this.theme.fg("muted", "No works or todos in this session.")].slice(0, budget);
-        const heading = item.kind === "work"
-            ? `${item.work.workId} · ${safeSingleLine(item.work.workName)} · ${item.work.status}`
-            : `${item.todo.taskId} · ${safeSingleLine(item.todo.taskName)} · ${item.todo.status} · ${item.todo.workId} ${safeSingleLine(item.workName)}`;
+        let heading;
+        if (item.kind === "work") {
+            const lead = `${item.work.workId} · `;
+            const tail = ` · ${item.work.status}`;
+            heading = `${lead}${progressName(item.work.workName, workCompletion(item.work), width - visibleWidth(lead + tail))}${tail}`;
+        }
+        else {
+            const taskName = safeSingleLine(item.todo.taskName);
+            const workName = safeSingleLine(item.work.workName);
+            const taskProgress = formatCompletion(taskCompletion(item.todo));
+            const workProgress = formatCompletion(workCompletion(item.work));
+            const fixed = `${item.todo.taskId} ·  · ${taskProgress} · ${item.todo.status} · ${item.todo.workId}  · ${workProgress}`;
+            const available = Math.max(0, width - visibleWidth(fixed));
+            const taskWidth = Math.min(visibleWidth(taskName), available - Math.min(visibleWidth(workName), Math.floor(available / 2)));
+            const shownTask = truncateToWidth(taskName, taskWidth, "…");
+            const shownWork = truncateToWidth(workName, available - taskWidth, "…");
+            heading = `${item.todo.taskId} · ${shownTask} · ${taskProgress} · ${item.todo.status} · ${item.todo.workId} ${shownWork} · ${workProgress}`;
+        }
         const info = item.kind === "work" ? item.work.workInfo : item.todo.taskInfo;
         const infoLines = safeMultiline(info).flatMap((line) => wrapTextWithAnsi(this.theme.fg("dim", line || " "), width));
         const contentBudget = Math.max(0, budget - 3);

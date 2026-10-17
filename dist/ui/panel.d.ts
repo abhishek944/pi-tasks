@@ -23,6 +23,7 @@ export declare class TasksPanelHost {
     private applyMode;
     private hideCurrent;
 }
+export declare function progressName(name: string, completion: number | null, width: number): string;
 export declare function workIcon(status: WorkStatus, theme: Theme): string;
 export declare function todoIcon(status: TodoStatus, theme: Theme): string;
 export declare function frame(content: string, innerWidth: number, theme: Theme): string;

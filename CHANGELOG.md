@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 - 2026-10-17
 
 - Added opt-in auto-continuation with an optional limit for unfinished session-branch works and todos using Pi 1.2's native pre-settlement boundary.
 - Respect manual aborts, failed runs, queued messages, and unavailable tracking tools; only fresh interactive/RPC input rearms the flow after suspension.

@@ -17,7 +17,7 @@ The coordination model is intentionally small: a work is the overall outcome, a 
 ## Install
 
 ```bash
-pi install npm:@abhishek944/pi-tasks@0.6.0
+pi install npm:@abhishek944/pi-tasks@0.7.0
 ```
 
 Restart Pi or run `/reload`.

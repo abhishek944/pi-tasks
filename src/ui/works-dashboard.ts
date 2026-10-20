@@ -13,6 +13,7 @@ import {
 import type { GitStatusCache } from "../git-status.js";
 import { formatWorksMarkdown } from "../markdown.js";
 import { openRepository } from "../open-repository.js";
+import { taskOwner } from "../ownership.js";
 import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import type { TaskState } from "../state.js";
 import { safeMultiline, safeSingleLine } from "../text.js";
@@ -212,7 +213,7 @@ export class WorksDashboard implements Component, Focusable {
     }
     const metadata = this.theme.fg("dim", item.todo.status);
     const nameWidth = width - visibleWidth(prefix) - 5 - visibleWidth(metadata);
-    return truncateToWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${progressName(`[${item.todo.taskId}] ${item.todo.taskName}`, taskCompletion(item.todo), nameWidth)} ${metadata}`, width, "");
+    return truncateToWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${progressName(`[${item.todo.taskId}] [${taskOwner(item.todo.taskInfo)}] ${item.todo.taskName}`, taskCompletion(item.todo), nameWidth)} ${metadata}`, width, "");
   }
 
   private renderDetails(items: DashboardItem[], width: number, budget: number): string[] {
@@ -226,15 +227,16 @@ export class WorksDashboard implements Component, Focusable {
       heading = `${lead}${progressName(item.work.workName, workCompletion(item.work), width - visibleWidth(lead + tail))}${tail}`;
     } else {
       const taskName = safeSingleLine(item.todo.taskName);
+      const taskLead = `[${item.todo.taskId}] [${taskOwner(item.todo.taskInfo)}] `;
       const workName = safeSingleLine(item.work.workName);
       const taskProgress = formatCompletion(taskCompletion(item.todo));
       const workProgress = formatCompletion(workCompletion(item.work));
-      const fixed = `[${item.todo.taskId}]  · ${taskProgress} · ${item.todo.status} · [${item.todo.workId}]  · ${workProgress}`;
+      const fixed = `${taskLead} · ${taskProgress} · ${item.todo.status} · [${item.todo.workId}]  · ${workProgress}`;
       const available = Math.max(0, width - visibleWidth(fixed));
       const taskWidth = Math.min(visibleWidth(taskName), available - Math.min(visibleWidth(workName), Math.floor(available / 2)));
       const shownTask = truncateToWidth(taskName, taskWidth, "…");
       const shownWork = truncateToWidth(workName, available - taskWidth, "…");
-      heading = `[${item.todo.taskId}] ${shownTask} · ${taskProgress} · ${item.todo.status} · [${item.todo.workId}] ${shownWork} · ${workProgress}`;
+      heading = `${taskLead}${shownTask} · ${taskProgress} · ${item.todo.status} · [${item.todo.workId}] ${shownWork} · ${workProgress}`;
     }
     const info = item.kind === "work" ? item.work.workInfo : item.todo.taskInfo;
     const infoLines = safeMultiline(info).flatMap((line) => wrapTextWithAnsi(this.theme.fg("dim", line || " "), width));

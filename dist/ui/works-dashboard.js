@@ -2,6 +2,7 @@ import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, } from "@earendil-works/pi-tui";
 import { formatWorksMarkdown } from "../markdown.js";
 import { openRepository } from "../open-repository.js";
+import { taskOwner } from "../ownership.js";
 import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import { safeMultiline, safeSingleLine } from "../text.js";
 import { border, frame, gitBorder, progressName, rule, todoIcon, workIcon } from "./panel.js";
@@ -200,7 +201,7 @@ export class WorksDashboard {
         }
         const metadata = this.theme.fg("dim", item.todo.status);
         const nameWidth = width - visibleWidth(prefix) - 5 - visibleWidth(metadata);
-        return truncateToWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${progressName(`[${item.todo.taskId}] ${item.todo.taskName}`, taskCompletion(item.todo), nameWidth)} ${metadata}`, width, "");
+        return truncateToWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${progressName(`[${item.todo.taskId}] [${taskOwner(item.todo.taskInfo)}] ${item.todo.taskName}`, taskCompletion(item.todo), nameWidth)} ${metadata}`, width, "");
     }
     renderDetails(items, width, budget) {
         if (!this.detailsVisible || budget === 0)
@@ -216,15 +217,16 @@ export class WorksDashboard {
         }
         else {
             const taskName = safeSingleLine(item.todo.taskName);
+            const taskLead = `[${item.todo.taskId}] [${taskOwner(item.todo.taskInfo)}] `;
             const workName = safeSingleLine(item.work.workName);
             const taskProgress = formatCompletion(taskCompletion(item.todo));
             const workProgress = formatCompletion(workCompletion(item.work));
-            const fixed = `[${item.todo.taskId}]  · ${taskProgress} · ${item.todo.status} · [${item.todo.workId}]  · ${workProgress}`;
+            const fixed = `${taskLead} · ${taskProgress} · ${item.todo.status} · [${item.todo.workId}]  · ${workProgress}`;
             const available = Math.max(0, width - visibleWidth(fixed));
             const taskWidth = Math.min(visibleWidth(taskName), available - Math.min(visibleWidth(workName), Math.floor(available / 2)));
             const shownTask = truncateToWidth(taskName, taskWidth, "…");
             const shownWork = truncateToWidth(workName, available - taskWidth, "…");
-            heading = `[${item.todo.taskId}] ${shownTask} · ${taskProgress} · ${item.todo.status} · [${item.todo.workId}] ${shownWork} · ${workProgress}`;
+            heading = `${taskLead}${shownTask} · ${taskProgress} · ${item.todo.status} · [${item.todo.workId}] ${shownWork} · ${workProgress}`;
         }
         const info = item.kind === "work" ? item.work.workInfo : item.todo.taskInfo;
         const infoLines = safeMultiline(info).flatMap((line) => wrapTextWithAnsi(this.theme.fg("dim", line || " "), width));

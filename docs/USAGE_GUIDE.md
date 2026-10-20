@@ -16,9 +16,40 @@ The extension applies this guidance across all loaded skills and does not skip w
 
 Write `workInfo` and `taskInfo` in normal prose with full sentences and spaces between words. Conversational brevity modes do not apply to stored records; do not concatenate words to shorten them. This is model-facing guidance, not automatic repair of existing text.
 
+## Shared workflow and artifacts
+
+Every tracked Work, including each worker's local Work, uses the globally installed `implement` skill for coordination. Read it once before execution, or reuse it if active. Specialized skills retain their scope: research and review remain read-only, and planning does not authorize implementation. Plain conversation, `/ask`, and `/btw` remain outside this workflow. Pi-tasks owns records and progress; `implement` owns coordination, artifact paths, and integration; `herdr` owns delegated-agent lifecycle and monitors. This instruction does not install those skills or add runtime enforcement. If `implement`, tracking tools, or required IDs are unavailable, report the blocker rather than executing without them.
+
+Read the full current session ID through the agent's own shell tool:
+
+```bash
+printf '%s\n' "$PI_SESSION_ID"
+```
+
+Startup includes reading instructions, obtaining identity, and creating/resuming tracking. Before execution, require a nonempty session ID matching `[A-Za-z0-9][A-Za-z0-9_-]*`, a real tool-returned Work ID, and an active Task ID. Do not invent IDs, use a Herdr pane/name as identity, or substitute the parent's session ID. Hosts/custom shell tools that do not expose session identity must report that blocker.
+
+Root task artifacts use repository-relative `var/<sessionId>/<workId>/<taskId>/`, never the system `/var/`. A delegated worker appends its own `<childSessionId>/<childWorkId>/<childTaskId>/` below the exact `parentTaskDir` from its assignment, recursively. For example:
+
+```text
+var/<rootSessionId>/W1/T2/
+  plan.md
+  <childSessionId>/W1/T1/
+    report.md
+```
+
+Record the canonical artifact directory and parent session/Work/Task IDs in `taskInfo`, pass them unchanged in handoffs, and return them with results. Keep resolved destinations inside the repository's `var/`, including symlinks. Create folders only for useful artifacts; feature names remain descriptions rather than path keys. Each task owns its files and links to shared coordinating-task plans rather than copying them. Reuse recorded paths only after verifying current ownership, especially after session-branch navigation; matching numeric IDs alone do not authorize overwriting artifacts. Preserve existing artifacts unless an explicit migration is approved. Follow `implement` for detailed path handling and report incompatible legacy helper paths rather than inventing unsupported arguments or silently falling back to feature-named directories.
+
+### Choose self or delegate
+
+Before each task, start `taskInfo` with `owner: self` or `owner: delegate` and a short reason. Preserve this declaration when updating the details. Delegate only when scope and acceptance criteria are clear, ownership can be isolated, required inputs and verified prerequisites are ready, and useful parallelism or expertise outweighs startup, context transfer, monitoring, and integration costs. The owning skill must permit delegation and required tracking and monitoring must be available. Small straightforward changes, tightly coupled edits, shared-interface design, and expensive-to-explain work normally stay with one owner. Risk alone is not a reason for parallel coding; independent review may still help. Do not use arbitrary file-count, agent-count, or depth thresholds. Reassess if scope changes; each allowed delegating child applies the same rule, and parents retain responsibility for monitoring, integration, verification, and cleanup.
+
+Name each Herdr subagent root pane exactly with the parent's delegated Todo ID, for example `T34`, without brackets, descriptions, Work IDs, or other prefixes. The worker creates its own session-local tracking after startup; those IDs do not replace this pane label. Rename an owned worker pane if a follow-up assigns a different parent Todo. Names may repeat across parent sessions, so use returned resource IDs for lifecycle commands, never pane names.
+
+These are instructions using existing details fields, not a new schema, shared cross-session task tree, automatic directory creator, or enforcement hook.
+
 ## Delegated agents
 
-Every subagent must create or resume its own session-local Work and Todos before starting its assignment, at every delegation depth. It must have a real `workId` and an active `taskId` for the current step, keep its records current, and return the IDs with results, checks, and blockers. Include this requirement in every worker prompt. Record parent assignment IDs as context, not as shared records: each Pi session has its own IDs. If tracking tools or IDs are unavailable, the worker must report the blocker and not begin assigned work; a parent-owned Todo or Markdown checklist is not a substitute. Never invent IDs or claim tracking existed before it did. This is model-facing guidance, not a runtime enforcement hook; `/ask` and `/btw` remain outside tracking.
+Every subagent must create or resume its own session-local Work and Todos before starting its assignment, at every delegation depth. It must have a real `workId` and an active `taskId` for the current step, keep its records current, and return the IDs with results, checks, and blockers. Include this requirement, the `implement`/specialized skill handoff, parent session/Work/Task IDs, and the canonical parent task directory in every worker prompt. Require the worker to return its own session/Work/Task IDs and canonical nested artifact directory. Record parent assignment IDs as context, not as shared records: each Pi session has its own IDs. If tracking tools or IDs are unavailable, the worker must report the blocker and not begin assigned work; a parent-owned Todo or Markdown checklist is not a substitute. Never invent IDs or claim tracking existed before it did. This is model-facing guidance, not a runtime enforcement hook; `/ask` and `/btw` remain outside tracking.
 
 ## Statuses and dependencies
 
@@ -85,7 +116,16 @@ Work progress averages all non-cancelled tasks equally and rounds down. Tasks at
 
 ## TUI
 
-Both the compact panel (floating or widget) and `/works` prefix names with their IDs: `[W1] Locate subagent restrictions` and `[T1] Inspect the implement skill`. Dashboard detail headings use the same bracketed IDs. These are display labels only; stored names and IDs are unchanged.
+Both the compact panel (floating or widget) and `/works` prefix work names with their IDs, such as `[W1] Locate subagent restrictions`. Task rows and dashboard detail headings also include ownership: `[T1] [self] Inspect the implement skill` or `[T2] [delegate] Implement storage`. These are display labels only; stored names and IDs are unchanged.
+
+Ownership is read case-insensitively from explicit line-start `owner: self` or `owner: delegate` declarations in `taskInfo`, optionally followed by a reason or sentence. Incidental prose does not assign ownership. Missing, invalid, or conflicting declarations show `[unassigned]`; repeated declarations with the same valid value are unambiguous. No old records are rewritten and no new tool parameter is required. For example:
+
+```text
+owner: self. This is a small, tightly coupled change.
+The task covers the panel label and its documentation.
+```
+
+The compact panel title shows the current full Pi session ID obtained directly from the session context, including when minimized or in widget mode. It shortens with an ellipsis only when necessary to fit beside Copy, Open, and Minimize/Maximize. Overflow range/hint text shares the available title space. Session changes refresh the title; no script or shell process runs during rendering. If the session ID is absent, it shows `Session unavailable`. The `/works` dashboard retains its existing title.
 
 The panel defaults to a floating top-right layout and does not take keyboard focus. A slim, separated right-hand column keeps work and task percentages aligned and visible even when names are long; the left side retains names, status icons and work task-counts. It hides on small terminals. The top border centers repository-wide Git status: `git main · S2 U3 ?1` means two staged files, three unstaged files, and one untracked file; a file with both staged and unstaged edits counts in both. A clean repository shows `git main · clean`. Long branches shorten before counts. Detached HEAD shows `@` plus the short commit. Git remains visible while minimized and adds no content row.
 

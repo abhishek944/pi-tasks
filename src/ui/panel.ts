@@ -4,6 +4,7 @@ import { type Component, type OverlayHandle, type TUI, type TuiMouseEvent, type 
 import type { GitSnapshot, GitStatusCache } from "../git-status.js";
 import { formatWorksMarkdown } from "../markdown.js";
 import { openRepository } from "../open-repository.js";
+import { taskOwner } from "../ownership.js";
 import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import type { TaskState } from "../state.js";
 import { safeSingleLine } from "../text.js";
@@ -24,12 +25,14 @@ export class TasksPanelHost {
   private mode: TasksPanelMode = "floating";
   private minimized = false;
   private cwd = "";
+  private sessionId = "Session unavailable";
 
   constructor(private readonly state: TaskState, private readonly git: GitStatusCache) {}
 
-  attach(ui: ExtensionUIContext, cwd: string): void {
+  attach(ui: ExtensionUIContext, cwd: string, sessionId: string): void {
     this.hideCurrent();
     this.cwd = cwd;
+    this.sessionId = safeSingleLine(sessionId) || "Session unavailable";
     this.ui = ui;
     this.applyMode();
   }
@@ -81,6 +84,7 @@ export class TasksPanelHost {
           (message, type) => ui.notify(message, type),
           this.cwd,
           this.git,
+          this.sessionId,
         );
         return this.panel;
       });
@@ -101,6 +105,7 @@ export class TasksPanelHost {
         (message, type) => ui.notify(message, type),
         this.cwd,
         this.git,
+        this.sessionId,
       );
       this.handle = tui.showOverlay(this.panel, {
         anchor: "top-right",
@@ -153,6 +158,7 @@ class TasksPanel implements Component {
     private readonly notify: Notify,
     private readonly cwd: string,
     private readonly git: GitStatusCache,
+    private readonly sessionId: string,
   ) {}
 
   render(width: number): string[] {
@@ -163,7 +169,7 @@ class TasksPanel implements Component {
     const innerWidth = boxWidth - 2;
     const leftPad = this.placement === "widget" ? " ".repeat(Math.max(0, width - boxWidth)) : "";
     if (this.minimized) {
-      const header = this.renderHeader("Works", innerWidth, leftPad.length);
+      const header = this.renderHeader(this.sessionId, innerWidth, leftPad.length);
       return [
         gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
         frame(header, innerWidth, this.theme),
@@ -179,7 +185,7 @@ class TasksPanel implements Component {
       const summary = workSummaryLine(work.status, `[${work.workId}] ${work.workName}`, `${completed}/${work.tasks.length}`, contentWidth, this.theme);
       content.push(progressColumn(summary, workCompletion(work), innerWidth, this.theme));
       for (const todo of work.tasks) {
-        const label = `  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(`[${todo.taskId}] ${todo.taskName}`))}`;
+        const label = `  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(`[${todo.taskId}] [${taskOwner(todo.taskInfo)}] ${todo.taskName}`))}`;
         content.push(progressColumn(label, taskCompletion(todo), innerWidth, this.theme));
       }
     }
@@ -198,14 +204,10 @@ class TasksPanel implements Component {
     const shown = content.slice(this.scrollOffset, this.scrollOffset + this.pageSize);
     const hasOverflow = content.length > this.pageSize;
     const range = `${this.scrollOffset + 1}–${this.scrollOffset + shown.length}/${content.length}`;
-    let title = "Works";
-    if (this.placement === "floating" && hasOverflow) {
-      title += this.tui.mode === "fullscreen"
-        ? ` · ${range}`
-        : ` · ${range} · latest · /works for all`;
-    }
-
-    const header = this.renderHeader(title, innerWidth, leftPad.length);
+    const suffix = this.placement === "floating" && hasOverflow
+      ? this.tui.mode === "fullscreen" ? ` · ${range}` : ` · ${range} · latest · /works for all`
+      : "";
+    const header = this.renderHeader(this.sessionId, innerWidth, leftPad.length, suffix);
     const lines = [
       gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
       frame(header, innerWidth, this.theme),
@@ -262,7 +264,7 @@ class TasksPanel implements Component {
     this.tui.requestRender();
   }
 
-  private renderHeader(titleText: string, width: number, leftPadWidth: number): string {
+  private renderHeader(titleText: string, width: number, leftPadWidth: number, suffix = ""): string {
     const title = this.theme.fg("accent", this.theme.bold(titleText));
     const copyAction = this.copying
       ? this.theme.fg("dim", "[Copying…]")
@@ -272,7 +274,8 @@ class TasksPanel implements Component {
     const toggleAction = this.theme.fg("accent", this.theme.bold(toggleLabel));
     const actionsWidth = visibleWidth(copyAction) + 1 + visibleWidth(openAction) + 1 + visibleWidth(toggleAction);
     const titleWidth = Math.max(0, width - actionsWidth - 1);
-    const shownTitle = truncateToWidth(title, titleWidth, "");
+    const shownSuffix = truncateToWidth(this.theme.fg("dim", suffix), Math.floor(titleWidth / 2), "…");
+    const shownTitle = `${truncateToWidth(title, Math.max(0, titleWidth - visibleWidth(shownSuffix)), "…")}${shownSuffix}`;
     const gap = " ".repeat(Math.max(1, width - visibleWidth(shownTitle) - actionsWidth));
     const copyStart = leftPadWidth + 1 + visibleWidth(shownTitle) + gap.length;
     this.copyHitRegion = { start: copyStart, end: copyStart + visibleWidth(copyAction) };

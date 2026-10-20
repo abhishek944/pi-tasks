@@ -49,7 +49,7 @@ export default function tasksExtension(pi) {
         state.restore(ctx);
         git.setCwd(ctx.cwd);
         if (ctx.mode === "tui")
-            panel?.attach(ctx.ui, ctx.cwd);
+            panel?.attach(ctx.ui, ctx.cwd, ctx.sessionManager.getSessionId());
     });
     pi.on("session_tree", (_event, ctx) => {
         state.restore(ctx);

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.2 - 2026-10-21
+
+- Show `[taskId] [self/delegate] Task name` in compact panel and dashboard task labels using explicit ownership declarations in existing task details, with `[unassigned]` for missing or conflicting decisions.
+- Replace the compact panel's Works title with the current Pi session ID from the session-context API, including minimized/widget modes, while preserving width-safe actions and overflow context.
+
+- Coordinate every tracked Work through the global `implement` skill, preserving specialized skill permissions and side-conversation exceptions.
+- Use full Pi session IDs and real Work/Task IDs for task-owned artifact paths, nesting delegated paths below the exact parent task directory. Record canonical paths in existing task details without migrating old artifacts or introducing shared cross-session state.
+- Require an explicit self-versus-delegate decision and reason per task, with isolated ownership, ready inputs, and useful parallelism or expertise outweighing coordination costs. This remains instruction-only, with Herdr responsible for agent lifecycle.
+- Name Herdr subagent root panes using only the parent's delegated Task ID; keep worker-local tracking and returned lifecycle resource IDs distinct from pane labels.
+
 ## 0.9.1 - 2026-10-21
 
 - Prefix work and todo names with bracketed IDs in floating/widget panels, `/works` rows, and detail headings, without changing stored names or the reserved progress column.

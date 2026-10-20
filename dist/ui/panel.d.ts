@@ -13,8 +13,9 @@ export declare class TasksPanelHost {
     private mode;
     private minimized;
     private cwd;
+    private sessionId;
     constructor(state: TaskState, git: GitStatusCache);
-    attach(ui: ExtensionUIContext, cwd: string): void;
+    attach(ui: ExtensionUIContext, cwd: string, sessionId: string): void;
     setMode(mode: TasksPanelMode): void;
     getMode(): TasksPanelMode;
     setMinimized(minimized: boolean): void;

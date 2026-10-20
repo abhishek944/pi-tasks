@@ -3,6 +3,7 @@ import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { formatWorksMarkdown } from "../markdown.js";
 import { openRepository } from "../open-repository.js";
+import { taskOwner } from "../ownership.js";
 import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import { safeSingleLine } from "../text.js";
 const EMPTY_COMPONENT = { render: () => [], invalidate: () => { } };
@@ -18,13 +19,15 @@ export class TasksPanelHost {
     mode = "floating";
     minimized = false;
     cwd = "";
+    sessionId = "Session unavailable";
     constructor(state, git) {
         this.state = state;
         this.git = git;
     }
-    attach(ui, cwd) {
+    attach(ui, cwd, sessionId) {
         this.hideCurrent();
         this.cwd = cwd;
+        this.sessionId = safeSingleLine(sessionId) || "Session unavailable";
         this.ui = ui;
         this.applyMode();
     }
@@ -62,7 +65,7 @@ export class TasksPanelHost {
                 this.tui = tui;
                 this.panel = new TasksPanel(tui, this.state, theme, "widget", this.minimized, (minimized) => {
                     this.minimized = minimized;
-                }, (message, type) => ui.notify(message, type), this.cwd, this.git);
+                }, (message, type) => ui.notify(message, type), this.cwd, this.git, this.sessionId);
                 return this.panel;
             });
             return;
@@ -71,7 +74,7 @@ export class TasksPanelHost {
             this.tui = tui;
             this.panel = new TasksPanel(tui, this.state, theme, "floating", this.minimized, (minimized) => {
                 this.minimized = minimized;
-            }, (message, type) => ui.notify(message, type), this.cwd, this.git);
+            }, (message, type) => ui.notify(message, type), this.cwd, this.git, this.sessionId);
             this.handle = tui.showOverlay(this.panel, {
                 anchor: "top-right",
                 width: "42%",
@@ -108,6 +111,7 @@ class TasksPanel {
     notify;
     cwd;
     git;
+    sessionId;
     scrollOffset = 0;
     pageSize = 1;
     contentLength = 0;
@@ -119,7 +123,7 @@ class TasksPanel {
     copyHitRegion;
     openHitRegion;
     toggleHitRegion;
-    constructor(tui, state, theme, placement, minimized, onMinimizedChange, notify, cwd, git) {
+    constructor(tui, state, theme, placement, minimized, onMinimizedChange, notify, cwd, git, sessionId) {
         this.tui = tui;
         this.state = state;
         this.theme = theme;
@@ -129,6 +133,7 @@ class TasksPanel {
         this.notify = notify;
         this.cwd = cwd;
         this.git = git;
+        this.sessionId = sessionId;
     }
     render(width) {
         if (this.placement === "widget")
@@ -140,7 +145,7 @@ class TasksPanel {
         const innerWidth = boxWidth - 2;
         const leftPad = this.placement === "widget" ? " ".repeat(Math.max(0, width - boxWidth)) : "";
         if (this.minimized) {
-            const header = this.renderHeader("Works", innerWidth, leftPad.length);
+            const header = this.renderHeader(this.sessionId, innerWidth, leftPad.length);
             return [
                 gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
                 frame(header, innerWidth, this.theme),
@@ -156,7 +161,7 @@ class TasksPanel {
             const summary = workSummaryLine(work.status, `[${work.workId}] ${work.workName}`, `${completed}/${work.tasks.length}`, contentWidth, this.theme);
             content.push(progressColumn(summary, workCompletion(work), innerWidth, this.theme));
             for (const todo of work.tasks) {
-                const label = `  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(`[${todo.taskId}] ${todo.taskName}`))}`;
+                const label = `  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(`[${todo.taskId}] [${taskOwner(todo.taskInfo)}] ${todo.taskName}`))}`;
                 content.push(progressColumn(label, taskCompletion(todo), innerWidth, this.theme));
             }
         }
@@ -176,13 +181,10 @@ class TasksPanel {
         const shown = content.slice(this.scrollOffset, this.scrollOffset + this.pageSize);
         const hasOverflow = content.length > this.pageSize;
         const range = `${this.scrollOffset + 1}–${this.scrollOffset + shown.length}/${content.length}`;
-        let title = "Works";
-        if (this.placement === "floating" && hasOverflow) {
-            title += this.tui.mode === "fullscreen"
-                ? ` · ${range}`
-                : ` · ${range} · latest · /works for all`;
-        }
-        const header = this.renderHeader(title, innerWidth, leftPad.length);
+        const suffix = this.placement === "floating" && hasOverflow
+            ? this.tui.mode === "fullscreen" ? ` · ${range}` : ` · ${range} · latest · /works for all`
+            : "";
+        const header = this.renderHeader(this.sessionId, innerWidth, leftPad.length, suffix);
         const lines = [
             gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
             frame(header, innerWidth, this.theme),
@@ -239,7 +241,7 @@ class TasksPanel {
         this.onMinimizedChange(minimized);
         this.tui.requestRender();
     }
-    renderHeader(titleText, width, leftPadWidth) {
+    renderHeader(titleText, width, leftPadWidth, suffix = "") {
         const title = this.theme.fg("accent", this.theme.bold(titleText));
         const copyAction = this.copying
             ? this.theme.fg("dim", "[Copying…]")
@@ -249,7 +251,8 @@ class TasksPanel {
         const toggleAction = this.theme.fg("accent", this.theme.bold(toggleLabel));
         const actionsWidth = visibleWidth(copyAction) + 1 + visibleWidth(openAction) + 1 + visibleWidth(toggleAction);
         const titleWidth = Math.max(0, width - actionsWidth - 1);
-        const shownTitle = truncateToWidth(title, titleWidth, "");
+        const shownSuffix = truncateToWidth(this.theme.fg("dim", suffix), Math.floor(titleWidth / 2), "…");
+        const shownTitle = `${truncateToWidth(title, Math.max(0, titleWidth - visibleWidth(shownSuffix)), "…")}${shownSuffix}`;
         const gap = " ".repeat(Math.max(1, width - visibleWidth(shownTitle) - actionsWidth));
         const copyStart = leftPadWidth + 1 + visibleWidth(shownTitle) + gap.length;
         this.copyHitRegion = { start: copyStart, end: copyStart + visibleWidth(copyAction) };

@@ -116,7 +116,7 @@ Work progress averages all non-cancelled tasks equally and rounds down. Tasks at
 
 ## TUI
 
-Both the compact panel (floating or widget) and `/works` prefix work names with their IDs, such as `[W1] Locate subagent restrictions`. Task rows and dashboard detail headings also include ownership: `[T1] [self] Inspect the implement skill` or `[T2] [delegate] Implement storage`. These are display labels only; stored names and IDs are unchanged.
+Both the compact panel (floating or widget) and `/works` prefix work names with their IDs, such as `[W1] Locate subagent restrictions`. Task rows and dashboard detail headings also include ownership: `[T1] [self] Inspect the implement skill` or `[T2] [delegate] Implement storage`. These are display labels only; stored names and IDs are unchanged. Work IDs use the theme's accent color, task IDs use its type-highlight color, `[self]` uses success, `[delegate]` uses warning, and `[unassigned]` stays muted. Exact hues follow the selected theme; labels remain readable without relying on color.
 
 Ownership is read case-insensitively from explicit line-start `owner: self` or `owner: delegate` declarations in `taskInfo`, optionally followed by a reason or sentence. Incidental prose does not assign ownership. Missing, invalid, or conflicting declarations show `[unassigned]`; repeated declarations with the same valid value are unambiguous. No old records are rewritten and no new tool parameter is required. For example:
 

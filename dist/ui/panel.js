@@ -158,10 +158,10 @@ class TasksPanel {
             content.push(progressColumn(this.theme.fg("muted", "No works yet."), null, innerWidth, this.theme));
         for (const work of works) {
             const completed = work.tasks.filter((todo) => todo.status === "completed").length;
-            const summary = workSummaryLine(work.status, `[${work.workId}] ${work.workName}`, `${completed}/${work.tasks.length}`, contentWidth, this.theme);
+            const summary = workSummaryLine(work.status, work.workName, `${completed}/${work.tasks.length}`, contentWidth, this.theme, work.workId);
             content.push(progressColumn(summary, workCompletion(work), innerWidth, this.theme));
             for (const todo of work.tasks) {
-                const label = `  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(`[${todo.taskId}] [${taskOwner(todo.taskInfo)}] ${todo.taskName}`))}`;
+                const label = `  ${todoIcon(todo.status, this.theme)} ${recordId(todo.taskId, this.theme)} ${ownerBadge(todo.taskInfo, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(todo.taskName))}`;
                 content.push(progressColumn(label, taskCompletion(todo), innerWidth, this.theme));
             }
         }
@@ -324,9 +324,16 @@ class TasksPanel {
         return Math.max(0, this.contentLength - this.pageSize);
     }
 }
-export function progressName(name, completion, width) {
+export function recordId(id, theme) {
+    return theme.fg(id.startsWith("W") ? "accent" : "syntaxType", `[${safeSingleLine(id)}]`);
+}
+export function ownerBadge(taskInfo, theme) {
+    const owner = taskOwner(taskInfo);
+    return theme.fg(owner === "self" ? "success" : owner === "delegate" ? "warning" : "muted", `[${owner}]`);
+}
+export function progressName(name, completion, width, prefix = "") {
     const suffix = ` · ${formatCompletion(completion)}`;
-    return `${truncateToWidth(safeSingleLine(name), Math.max(0, width - visibleWidth(suffix)), "…")}${suffix}`;
+    return `${truncateToWidth(`${prefix}${safeSingleLine(name)}`, Math.max(0, width - visibleWidth(suffix)), "…")}${suffix}`;
 }
 function progressColumn(content, completion, width, theme) {
     const contentWidth = width - PROGRESS_COLUMN_WIDTH;
@@ -335,10 +342,10 @@ function progressColumn(content, completion, width, theme) {
     const value = theme.fg(completion === null ? "muted" : "accent", formatCompletion(completion).padStart(PROGRESS_VALUE_WIDTH));
     return `${left}${padding}${theme.fg("border", " │ ")}${value}`;
 }
-function workSummaryLine(status, name, count, width, theme) {
+function workSummaryLine(status, name, count, width, theme, workId) {
     const right = theme.fg("dim", count);
     const leftWidth = Math.max(0, width - visibleWidth(right) - 1);
-    const left = `${workIcon(status, theme)} ${theme.fg("text", safeSingleLine(name))}`;
+    const left = `${workIcon(status, theme)} ${recordId(workId, theme)} ${theme.fg("text", safeSingleLine(name))}`;
     const shownLeft = truncateToWidth(left, leftWidth, "…");
     const gap = " ".repeat(Math.max(1, width - visibleWidth(shownLeft) - visibleWidth(right)));
     return `${shownLeft}${gap}${right}`;

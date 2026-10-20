@@ -182,10 +182,10 @@ class TasksPanel implements Component {
     if (works.length === 0) content.push(progressColumn(this.theme.fg("muted", "No works yet."), null, innerWidth, this.theme));
     for (const work of works) {
       const completed = work.tasks.filter((todo) => todo.status === "completed").length;
-      const summary = workSummaryLine(work.status, `[${work.workId}] ${work.workName}`, `${completed}/${work.tasks.length}`, contentWidth, this.theme);
+      const summary = workSummaryLine(work.status, work.workName, `${completed}/${work.tasks.length}`, contentWidth, this.theme, work.workId);
       content.push(progressColumn(summary, workCompletion(work), innerWidth, this.theme));
       for (const todo of work.tasks) {
-        const label = `  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(`[${todo.taskId}] [${taskOwner(todo.taskInfo)}] ${todo.taskName}`))}`;
+        const label = `  ${todoIcon(todo.status, this.theme)} ${recordId(todo.taskId, this.theme)} ${ownerBadge(todo.taskInfo, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(todo.taskName))}`;
         content.push(progressColumn(label, taskCompletion(todo), innerWidth, this.theme));
       }
     }
@@ -345,9 +345,18 @@ class TasksPanel implements Component {
   }
 }
 
-export function progressName(name: string, completion: number | null, width: number): string {
+export function recordId(id: string, theme: Theme): string {
+  return theme.fg(id.startsWith("W") ? "accent" : "syntaxType", `[${safeSingleLine(id)}]`);
+}
+
+export function ownerBadge(taskInfo: string, theme: Theme): string {
+  const owner = taskOwner(taskInfo);
+  return theme.fg(owner === "self" ? "success" : owner === "delegate" ? "warning" : "muted", `[${owner}]`);
+}
+
+export function progressName(name: string, completion: number | null, width: number, prefix = ""): string {
   const suffix = ` · ${formatCompletion(completion)}`;
-  return `${truncateToWidth(safeSingleLine(name), Math.max(0, width - visibleWidth(suffix)), "…")}${suffix}`;
+  return `${truncateToWidth(`${prefix}${safeSingleLine(name)}`, Math.max(0, width - visibleWidth(suffix)), "…")}${suffix}`;
 }
 
 function progressColumn(content: string, completion: number | null, width: number, theme: Theme): string {
@@ -358,10 +367,10 @@ function progressColumn(content: string, completion: number | null, width: numbe
   return `${left}${padding}${theme.fg("border", " │ ")}${value}`;
 }
 
-function workSummaryLine(status: WorkStatus, name: string, count: string, width: number, theme: Theme): string {
+function workSummaryLine(status: WorkStatus, name: string, count: string, width: number, theme: Theme, workId: string): string {
   const right = theme.fg("dim", count);
   const leftWidth = Math.max(0, width - visibleWidth(right) - 1);
-  const left = `${workIcon(status, theme)} ${theme.fg("text", safeSingleLine(name))}`;
+  const left = `${workIcon(status, theme)} ${recordId(workId, theme)} ${theme.fg("text", safeSingleLine(name))}`;
   const shownLeft = truncateToWidth(left, leftWidth, "…");
   const gap = " ".repeat(Math.max(1, width - visibleWidth(shownLeft) - visibleWidth(right)));
   return `${shownLeft}${gap}${right}`;

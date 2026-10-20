@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.3 - 2026-10-21
+
+- Give work IDs, task IDs, and self/delegate ownership badges distinct theme-aware colors in compact panels, dashboard rows, and detail headings. Keep unassigned ownership muted and preserve text, progress columns, and Markdown exports.
+
 ## 0.9.2 - 2026-10-21
 
 - Show `[taskId] [self/delegate] Task name` in compact panel and dashboard task labels using explicit ownership declarations in existing task details, with `[unassigned]` for missing or conflicting decisions.

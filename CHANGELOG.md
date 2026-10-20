@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1 - 2026-10-21
+
+- Prefix work and todo names with bracketed IDs in floating/widget panels, `/works` rows, and detail headings, without changing stored names or the reserved progress column.
+- Require every delegated agent to establish and maintain its own session-local Work and Todo IDs before assigned work, pass the requirement to further agents, and report IDs with results. This is instruction-only; side-conversation exceptions remain unchanged.
+
 ## 0.9.0 - 2026-10-20
 
 - Remove `planned` and `pending` from work and todo tools; both now use `active`, `blocked`, `completed`, and `cancelled`, with `active` as the creation default.

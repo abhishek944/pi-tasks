@@ -206,13 +206,13 @@ export class WorksDashboard implements Component, Focusable {
     const prefix = selected ? this.theme.fg("accent", "▶ ") : "  ";
     if (item.kind === "work") {
       const done = item.work.tasks.filter((todo) => todo.status === "completed").length;
-      const metadata = this.theme.fg("dim", `${item.work.workId} · ${item.work.status} · ${done}/${item.work.tasks.length}`);
+      const metadata = this.theme.fg("dim", `${item.work.status} · ${done}/${item.work.tasks.length}`);
       const nameWidth = width - visibleWidth(prefix) - 3 - visibleWidth(metadata);
-      return truncateToWidth(`${prefix}${workIcon(item.work.status, this.theme)} ${this.theme.bold(progressName(item.work.workName, workCompletion(item.work), nameWidth))} ${metadata}`, width, "");
+      return truncateToWidth(`${prefix}${workIcon(item.work.status, this.theme)} ${this.theme.bold(progressName(`[${item.work.workId}] ${item.work.workName}`, workCompletion(item.work), nameWidth))} ${metadata}`, width, "");
     }
-    const metadata = this.theme.fg("dim", `${item.todo.taskId} · ${item.todo.status}`);
+    const metadata = this.theme.fg("dim", item.todo.status);
     const nameWidth = width - visibleWidth(prefix) - 5 - visibleWidth(metadata);
-    return truncateToWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${progressName(item.todo.taskName, taskCompletion(item.todo), nameWidth)} ${metadata}`, width, "");
+    return truncateToWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${progressName(`[${item.todo.taskId}] ${item.todo.taskName}`, taskCompletion(item.todo), nameWidth)} ${metadata}`, width, "");
   }
 
   private renderDetails(items: DashboardItem[], width: number, budget: number): string[] {
@@ -221,7 +221,7 @@ export class WorksDashboard implements Component, Focusable {
     if (!item) return [this.theme.fg("muted", "No works or todos in this session.")].slice(0, budget);
     let heading: string;
     if (item.kind === "work") {
-      const lead = `${item.work.workId} · `;
+      const lead = `[${item.work.workId}] `;
       const tail = ` · ${item.work.status}`;
       heading = `${lead}${progressName(item.work.workName, workCompletion(item.work), width - visibleWidth(lead + tail))}${tail}`;
     } else {
@@ -229,12 +229,12 @@ export class WorksDashboard implements Component, Focusable {
       const workName = safeSingleLine(item.work.workName);
       const taskProgress = formatCompletion(taskCompletion(item.todo));
       const workProgress = formatCompletion(workCompletion(item.work));
-      const fixed = `${item.todo.taskId} ·  · ${taskProgress} · ${item.todo.status} · ${item.todo.workId}  · ${workProgress}`;
+      const fixed = `[${item.todo.taskId}]  · ${taskProgress} · ${item.todo.status} · [${item.todo.workId}]  · ${workProgress}`;
       const available = Math.max(0, width - visibleWidth(fixed));
       const taskWidth = Math.min(visibleWidth(taskName), available - Math.min(visibleWidth(workName), Math.floor(available / 2)));
       const shownTask = truncateToWidth(taskName, taskWidth, "…");
       const shownWork = truncateToWidth(workName, available - taskWidth, "…");
-      heading = `${item.todo.taskId} · ${shownTask} · ${taskProgress} · ${item.todo.status} · ${item.todo.workId} ${shownWork} · ${workProgress}`;
+      heading = `[${item.todo.taskId}] ${shownTask} · ${taskProgress} · ${item.todo.status} · [${item.todo.workId}] ${shownWork} · ${workProgress}`;
     }
     const info = item.kind === "work" ? item.work.workInfo : item.todo.taskInfo;
     const infoLines = safeMultiline(info).flatMap((line) => wrapTextWithAnsi(this.theme.fg("dim", line || " "), width));

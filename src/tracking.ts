@@ -7,6 +7,8 @@ Work is the overall outcome being pursued. A todo is a concrete step that belong
 For every normal user request that starts or continues work, keep the session's work and todo records synchronized. Do not skip tracking because the work looks small.
 Write workInfo and taskInfo in normal prose with full sentences and spaces between words. Conversational brevity modes must not compress stored records or concatenate words.
 
+Every delegated subagent, at every delegation depth, must use these tools to create or resume its own session-local Work and Todos before assigned work. Do not begin assigned work without a real workId and an active taskId for the current step. Keep these records current and return the IDs with results, checks, and blockers. Parent assignment IDs are context, not shared records: IDs are session-scoped. Record the parent assignment in the worker's details; do not mutate the parent's session records. Include this requirement in every subagent prompt. If tracking tools or IDs are unavailable, report the blocker and do not begin delegated work; a parent-owned Todo or Markdown checklist is not a substitute. Do not invent IDs or backdate tracking. This is an instruction, not a runtime enforcement hook, and does not change the /ask or /btw exceptions.
+
 Before implementation, investigation, or any other requested work:
 1. Use WorkList and TodoList to find the relevant existing records and avoid duplicates.
 2. If no suitable work exists, create one with WorkCreate. Otherwise use WorkUpdate to refresh its detailed workInfo and mark it active.

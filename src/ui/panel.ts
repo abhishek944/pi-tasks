@@ -176,10 +176,10 @@ class TasksPanel implements Component {
     if (works.length === 0) content.push(progressColumn(this.theme.fg("muted", "No works yet."), null, innerWidth, this.theme));
     for (const work of works) {
       const completed = work.tasks.filter((todo) => todo.status === "completed").length;
-      const summary = workSummaryLine(work.status, work.workName, `${completed}/${work.tasks.length}`, contentWidth, this.theme);
+      const summary = workSummaryLine(work.status, `[${work.workId}] ${work.workName}`, `${completed}/${work.tasks.length}`, contentWidth, this.theme);
       content.push(progressColumn(summary, workCompletion(work), innerWidth, this.theme));
       for (const todo of work.tasks) {
-        const label = `  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(todo.taskName))}`;
+        const label = `  ${todoIcon(todo.status, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(`[${todo.taskId}] ${todo.taskName}`))}`;
         content.push(progressColumn(label, taskCompletion(todo), innerWidth, this.theme));
       }
     }

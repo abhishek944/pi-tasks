@@ -16,6 +16,10 @@ The extension applies this guidance across all loaded skills and does not skip w
 
 Write `workInfo` and `taskInfo` in normal prose with full sentences and spaces between words. Conversational brevity modes do not apply to stored records; do not concatenate words to shorten them. This is model-facing guidance, not automatic repair of existing text.
 
+## Delegated agents
+
+Every subagent must create or resume its own session-local Work and Todos before starting its assignment, at every delegation depth. It must have a real `workId` and an active `taskId` for the current step, keep its records current, and return the IDs with results, checks, and blockers. Include this requirement in every worker prompt. Record parent assignment IDs as context, not as shared records: each Pi session has its own IDs. If tracking tools or IDs are unavailable, the worker must report the blocker and not begin assigned work; a parent-owned Todo or Markdown checklist is not a substitute. Never invent IDs or claim tracking existed before it did. This is model-facing guidance, not a runtime enforcement hook; `/ask` and `/btw` remain outside tracking.
+
 ## Statuses and dependencies
 
 Works and todos use only `active`, `blocked`, `completed`, and `cancelled`. New records default to `active`; saved legacy `planned` and `pending` statuses restore as active but are no longer accepted by tools.
@@ -80,6 +84,8 @@ During longer tasks, Pi should include a `completionPercent` estimate in `TodoUp
 Work progress averages all non-cancelled tasks equally and rounds down. Tasks at 100%, 40%, 0%, 0% produce 35% work completion, not 25% based on finished-task counts. If any eligible task lacks an estimate, the work displays `—`. No eligible tasks also means unknown unless the work itself is verified complete. A completed parent never hides unfinished task progress. Existing sessions retain their records; legacy completed tasks display 100%, while other missing estimates remain unknown.
 
 ## TUI
+
+Both the compact panel (floating or widget) and `/works` prefix names with their IDs: `[W1] Locate subagent restrictions` and `[T1] Inspect the implement skill`. Dashboard detail headings use the same bracketed IDs. These are display labels only; stored names and IDs are unchanged.
 
 The panel defaults to a floating top-right layout and does not take keyboard focus. A slim, separated right-hand column keeps work and task percentages aligned and visible even when names are long; the left side retains names, status icons and work task-counts. It hides on small terminals. The top border centers repository-wide Git status: `git main · S2 U3 ?1` means two staged files, three unstaged files, and one untracked file; a file with both staged and unstaged edits counts in both. A clean repository shows `git main · clean`. Long branches shorten before counts. Detached HEAD shows `@` plus the short commit. Git remains visible while minimized and adds no content row.
 

@@ -1,9 +1,10 @@
 import { stripVTControlCharacters } from "node:util";
 import { copyToClipboard, type ExtensionUIContext, type Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, type OverlayHandle, type TUI, type TuiMouseEvent, type TuiMouseEventResult, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { type Component, type OverlayHandle, sliceByColumn, type TUI, type TuiMouseEvent, type TuiMouseEventResult, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { type DelegateLink, delegateLink, focusPane } from "../agents/links.js";
 import type { GitSnapshot, GitStatusCache } from "../git-status.js";
 import { formatWorksMarkdown } from "../markdown.js";
-import { openRepository } from "../open-repository.js";
+import { openRepository, openSession } from "../open-repository.js";
 import { taskOwner } from "../ownership.js";
 import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import type { TaskState } from "../state.js";
@@ -142,10 +143,13 @@ class TasksPanel implements Component {
   private followTail = true;
   private copying = false;
   private opening = false;
+  private openingDelegate = false;
+  private delegateHits: DelegateHitRegion[] = [];
   private disposed = false;
   private unsubscribeGit: (() => void) | undefined;
   private copyHitRegion: HeaderHitRegion | undefined;
   private openHitRegion: HeaderHitRegion | undefined;
+  private sessionHitRegion: HeaderHitRegion | undefined;
   private toggleHitRegion: HeaderHitRegion | undefined;
 
   constructor(
@@ -162,6 +166,7 @@ class TasksPanel implements Component {
   ) {}
 
   render(width: number): string[] {
+    this.delegateHits = [];
     if (this.placement === "widget") this.setVisible(width >= 38);
     if (width < 38) return [];
     const works = this.state.listWorks();
@@ -169,7 +174,7 @@ class TasksPanel implements Component {
     const innerWidth = boxWidth - 2;
     const leftPad = this.placement === "widget" ? " ".repeat(Math.max(0, width - boxWidth)) : "";
     if (this.minimized) {
-      const header = this.renderHeader(this.sessionId, innerWidth, leftPad.length);
+      const header = this.renderHeader(innerWidth, leftPad.length);
       return [
         gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
         frame(header, innerWidth, this.theme),
@@ -179,13 +184,17 @@ class TasksPanel implements Component {
 
     const contentWidth = innerWidth - PROGRESS_COLUMN_WIDTH;
     const content: string[] = [];
+    const delegateRows = new Map<number, { agent: DelegateLink | undefined; start: number }>();
     if (works.length === 0) content.push(progressColumn(this.theme.fg("muted", "No works yet."), null, innerWidth, this.theme));
     for (const work of works) {
       const completed = work.tasks.filter((todo) => todo.status === "completed").length;
       const summary = workSummaryLine(work.status, work.workName, `${completed}/${work.tasks.length}`, contentWidth, this.theme, work.workId);
       content.push(progressColumn(summary, workCompletion(work), innerWidth, this.theme));
       for (const todo of work.tasks) {
-        const label = `  ${todoIcon(todo.status, this.theme)} ${recordId(todo.taskId, this.theme)} ${ownerBadge(todo.taskInfo, this.theme)} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(todo.taskName))}`;
+        const agent = delegateLink(todo.taskInfo);
+        const lead = `  ${todoIcon(todo.status, this.theme)} ${recordId(todo.taskId, this.theme)} `;
+        const label = `${lead}${ownerBadge(todo.taskInfo, this.theme, Boolean(agent))} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(todo.taskName))}`;
+        delegateRows.set(content.length, { agent, start: visibleWidth(lead) });
         content.push(progressColumn(label, taskCompletion(todo), innerWidth, this.theme));
       }
     }
@@ -202,12 +211,18 @@ class TasksPanel implements Component {
       this.clampScrollOffset();
     }
     const shown = content.slice(this.scrollOffset, this.scrollOffset + this.pageSize);
+    shown.forEach((line, index) => {
+      const row = delegateRows.get(this.scrollOffset + index);
+      if (!row) return;
+      const hit = delegateHitRegion(row.agent, row.start, line, 3 + index, leftPad.length);
+      if (hit) this.delegateHits.push(hit);
+    });
     const hasOverflow = content.length > this.pageSize;
     const range = `${this.scrollOffset + 1}–${this.scrollOffset + shown.length}/${content.length}`;
     const suffix = this.placement === "floating" && hasOverflow
       ? this.tui.mode === "fullscreen" ? ` · ${range}` : ` · ${range} · latest · /works for all`
       : "";
-    const header = this.renderHeader(this.sessionId, innerWidth, leftPad.length, suffix);
+    const header = this.renderHeader(innerWidth, leftPad.length, suffix);
     const lines = [
       gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
       frame(header, innerWidth, this.theme),
@@ -220,13 +235,32 @@ class TasksPanel implements Component {
 
   handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
     if (this.disposed) return undefined;
-    if (event.type === "click" && event.button === "left" && event.y === 1) {
+    if (event.type === "press" && event.button === "left") {
+      const delegateHit = this.delegateHits.some((region) => event.y === region.y && this.isHit(event.x, region));
+      const headerHit = event.y === 1 && [this.copyHitRegion, this.sessionHitRegion, this.openHitRegion, this.toggleHitRegion].some((region) => this.isHit(event.x, region));
+      // Own the gesture so Pi does not turn repeated control clicks into text selection.
+      if (delegateHit || headerHit) return { handled: true };
+    }
+    // Legacy mouse releases omit the button; Pi still normalizes the gesture as a click.
+    const primaryClick = event.type === "click" && (event.button === "left" || event.button === "none");
+    if (primaryClick) {
+      const hit = this.delegateHits.find((region) => event.y === region.y && this.isHit(event.x, region));
+      if (hit) {
+        void this.openLinkedDelegate(hit.link);
+        return { handled: true, render: true };
+      }
+    }
+    if (primaryClick && event.y === 1) {
       if (this.isHit(event.x, this.toggleHitRegion)) {
         this.setMinimized(!this.minimized);
         return { handled: true, render: true };
       }
       if (this.isHit(event.x, this.copyHitRegion)) {
         void this.copyAllAsMarkdown();
+        return { handled: true, render: true };
+      }
+      if (this.isHit(event.x, this.sessionHitRegion)) {
+        void this.openInCursor(true);
         return { handled: true, render: true };
       }
       if (this.isHit(event.x, this.openHitRegion)) {
@@ -264,42 +298,59 @@ class TasksPanel implements Component {
     this.tui.requestRender();
   }
 
-  private renderHeader(titleText: string, width: number, leftPadWidth: number, suffix = ""): string {
-    const title = this.theme.fg("accent", this.theme.bold(titleText));
+  private renderHeader(width: number, leftPadWidth: number, suffix = ""): string {
     const copyAction = this.copying
       ? this.theme.fg("dim", "[Copying…]")
       : this.theme.fg("accent", this.theme.bold("[Copy]"));
-    const openAction = this.theme.fg(this.opening ? "dim" : "accent", this.theme.bold("[Open]"));
-    const toggleLabel = this.minimized ? "[Maximize]" : "[Minimize]";
+    const sessionAction = this.theme.fg(this.opening ? "dim" : "accent", this.theme.underline(this.theme.bold("[Open session]")));
+    const openAction = this.theme.fg(this.opening ? "dim" : "accent", this.theme.underline(this.theme.bold("[Open]")));
+    const fixedWidth = visibleWidth(copyAction) + visibleWidth(sessionAction) + visibleWidth(openAction) + 3;
+    const fullToggle = this.minimized ? "[Maximize]" : "[Minimize]";
+    const toggleLabel = fixedWidth + visibleWidth(fullToggle) <= width ? fullToggle : this.minimized ? "[+]" : "[-]";
     const toggleAction = this.theme.fg("accent", this.theme.bold(toggleLabel));
-    const actionsWidth = visibleWidth(copyAction) + 1 + visibleWidth(openAction) + 1 + visibleWidth(toggleAction);
+    const actionsWidth = fixedWidth + visibleWidth(toggleAction);
     const titleWidth = Math.max(0, width - actionsWidth - 1);
-    const shownSuffix = truncateToWidth(this.theme.fg("dim", suffix), Math.floor(titleWidth / 2), "…");
-    const shownTitle = `${truncateToWidth(title, Math.max(0, titleWidth - visibleWidth(shownSuffix)), "…")}${shownSuffix}`;
-    const gap = " ".repeat(Math.max(1, width - visibleWidth(shownTitle) - actionsWidth));
-    const copyStart = leftPadWidth + 1 + visibleWidth(shownTitle) + gap.length;
+    const context = truncateToWidth(this.theme.fg("dim", suffix.replace(/^\s*·\s*/, "")), titleWidth, "…");
+    const gap = " ".repeat(Math.max(0, width - visibleWidth(context) - actionsWidth));
+    const copyStart = leftPadWidth + 1 + visibleWidth(context) + gap.length;
     this.copyHitRegion = { start: copyStart, end: copyStart + visibleWidth(copyAction) };
-    const openStart = this.copyHitRegion.end + 1;
+    const sessionStart = this.copyHitRegion.end + 1;
+    this.sessionHitRegion = { start: sessionStart, end: sessionStart + visibleWidth(sessionAction) };
+    const openStart = this.sessionHitRegion.end + 1;
     this.openHitRegion = { start: openStart, end: openStart + visibleWidth(openAction) };
     const toggleStart = this.openHitRegion.end + 1;
     this.toggleHitRegion = { start: toggleStart, end: toggleStart + visibleWidth(toggleAction) };
-    return `${shownTitle}${gap}${copyAction} ${openAction} ${toggleAction}`;
+    return `${context}${gap}${copyAction} ${sessionAction} ${openAction} ${toggleAction}`;
   }
 
   private isHit(x: number, region: HeaderHitRegion | undefined): boolean {
     return region !== undefined && x >= region.start && x < region.end;
   }
 
-  private async openInCursor(): Promise<void> {
+  private async openLinkedDelegate(link: DelegateLink): Promise<void> {
+    if (this.openingDelegate) return;
+    this.openingDelegate = true;
+    try {
+      await focusPane(link.paneId, this.cwd);
+    } catch (error) {
+      const reason = error instanceof Error ? safeSingleLine(error.message) : "Unknown error.";
+      if (!this.disposed) this.notify(`Could not open delegate. ${reason}`, "error");
+    } finally {
+      this.openingDelegate = false;
+    }
+  }
+
+  private async openInCursor(session = false): Promise<void> {
     if (this.opening) return;
     this.opening = true;
     this.tui.requestRender();
     try {
-      await openRepository(this.cwd);
-      if (!this.disposed) this.notify("Opened repository in Cursor.", "info");
+      if (session) await openSession(this.cwd, this.sessionId);
+      else await openRepository(this.cwd);
+      if (!this.disposed) this.notify(session ? "Opened session artifacts in Cursor." : "Opened repository in Cursor.", "info");
     } catch (error) {
       const reason = error instanceof Error ? ` ${safeSingleLine(error.message)}` : "";
-      if (!this.disposed) this.notify(`Could not open Cursor. Check that cursor is installed on PATH.${reason}`, "error");
+      if (!this.disposed) this.notify(session ? `Could not open session artifacts in Cursor.${reason}` : `Could not open Cursor. Check that cursor is installed on PATH.${reason}`, "error");
     } finally {
       this.opening = false;
       if (!this.disposed) this.tui.requestRender();
@@ -349,9 +400,17 @@ export function recordId(id: string, theme: Theme): string {
   return theme.fg(id.startsWith("W") ? "accent" : "syntaxType", `[${safeSingleLine(id)}]`);
 }
 
-export function ownerBadge(taskInfo: string, theme: Theme): string {
+export function ownerBadge(taskInfo: string, theme: Theme, linked = false): string {
   const owner = taskOwner(taskInfo);
-  return theme.fg(owner === "self" ? "success" : owner === "delegate" ? "warning" : "muted", `[${owner}]`);
+  const label = owner === "delegate" && linked ? theme.underline(`[${owner}]`) : `[${owner}]`;
+  return theme.fg(owner === "self" ? "success" : owner === "delegate" ? "warning" : "muted", label);
+}
+
+export type DelegateHitRegion = { start: number; end: number; y: number; link: DelegateLink };
+
+export function delegateHitRegion(link: DelegateLink | undefined, start: number, line: string, y: number, leftPad = 0): DelegateHitRegion | undefined {
+  if (!link || stripVTControlCharacters(sliceByColumn(line, start, 10)) !== "[delegate]") return undefined;
+  return { start: leftPad + 1 + start, end: leftPad + 1 + start + 10, y, link };
 }
 
 export function progressName(name: string, completion: number | null, width: number, prefix = ""): string {

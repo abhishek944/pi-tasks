@@ -1,6 +1,7 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, type ExtensionAPI, formatSize, truncateHead } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { preservePaneLink } from "./agents/links.js";
 import { formatCompletion, taskCompletion, workCompletion } from "./progress.js";
 import { TaskState } from "./state.js";
 import { renderTaskCall, renderTaskResult, taskResult } from "./tool-result.js";
@@ -153,7 +154,8 @@ export function registerTaskTools(pi: ExtensionAPI, state: TaskState): void {
       completionPercent: Type.Optional(CompletionSchema),
     }, { additionalProperties: false, minProperties: 2 }),
     execute(_id, params) {
-      const todo = state.updateTodo(params.taskId, { taskName: params.taskName, taskInfo: params.taskInfo, status: params.status, completionPercent: params.completionPercent });
+      const taskInfo = params.taskInfo === undefined ? undefined : preservePaneLink(state.getTodo(params.taskId)?.taskInfo ?? "", params.taskInfo);
+      const todo = state.updateTodo(params.taskId, { taskName: params.taskName, taskInfo, status: params.status, completionPercent: params.completionPercent });
       return Promise.resolve(taskResult(`Updated todo ${todo.taskId}: ${todo.taskName} · ${formatCompletion(taskCompletion(todo))} [${todo.status}]`, "todo-update", { taskId: todo.taskId, workId: todo.workId, completionPercent: taskCompletion(todo) }));
     },
     renderCall: renderTaskCall("TodoUpdate"),

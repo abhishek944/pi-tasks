@@ -1,4 +1,5 @@
 import { type ExtensionUIContext, type Theme } from "@earendil-works/pi-coding-agent";
+import { type DelegateLink } from "../agents/links.js";
 import type { GitSnapshot, GitStatusCache } from "../git-status.js";
 import type { TaskState } from "../state.js";
 import type { TodoStatus, WorkStatus } from "../types.js";
@@ -25,7 +26,14 @@ export declare class TasksPanelHost {
     private hideCurrent;
 }
 export declare function recordId(id: string, theme: Theme): string;
-export declare function ownerBadge(taskInfo: string, theme: Theme): string;
+export declare function ownerBadge(taskInfo: string, theme: Theme, linked?: boolean): string;
+export type DelegateHitRegion = {
+    start: number;
+    end: number;
+    y: number;
+    link: DelegateLink;
+};
+export declare function delegateHitRegion(link: DelegateLink | undefined, start: number, line: string, y: number, leftPad?: number): DelegateHitRegion | undefined;
 export declare function progressName(name: string, completion: number | null, width: number, prefix?: string): string;
 export declare function workIcon(status: WorkStatus, theme: Theme): string;
 export declare function todoIcon(status: TodoStatus, theme: Theme): string;

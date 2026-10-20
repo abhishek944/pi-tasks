@@ -10,6 +10,7 @@ import {
   visibleWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
+import { type DelegateLink, delegateLink, focusPane } from "../agents/links.js";
 import type { GitStatusCache } from "../git-status.js";
 import { formatWorksMarkdown } from "../markdown.js";
 import { openRepository } from "../open-repository.js";
@@ -17,7 +18,7 @@ import { formatCompletion, taskCompletion, workCompletion } from "../progress.js
 import type { TaskState } from "../state.js";
 import { safeMultiline, safeSingleLine } from "../text.js";
 import type { Todo, WorkWithTodos } from "../types.js";
-import { border, frame, gitBorder, ownerBadge, progressName, recordId, rule, todoIcon, workIcon } from "./panel.js";
+import { border, type DelegateHitRegion, delegateHitRegion, frame, gitBorder, ownerBadge, progressName, recordId, rule, todoIcon, workIcon } from "./panel.js";
 
 type DashboardItem =
   | { key: `work:${string}`; kind: "work"; work: WorkWithTodos }
@@ -38,6 +39,8 @@ export class WorksDashboard implements Component, Focusable {
   private messageColor: "warning" | "success" | "error" = "warning";
   private copying = false;
   private opening = false;
+  private openingDelegate = false;
+  private delegateHits: DelegateHitRegion[] = [];
   private minimized = false;
   private readonly unsubscribeGit: () => void;
   private openHitRegion: HeaderHitRegion | undefined;
@@ -64,6 +67,7 @@ export class WorksDashboard implements Component, Focusable {
   }
 
   render(width: number): string[] {
+    this.delegateHits = [];
     const dialogWidth = Math.max(1, width);
     const innerWidth = Math.max(1, dialogWidth - 2);
     const works = this.state.listWorks();
@@ -90,8 +94,14 @@ export class WorksDashboard implements Component, Focusable {
     const details = this.renderDetails(items, innerWidth, detailBudget);
     const listHeight = Math.max(0, bodyHeight - details.length);
     if (listHeight > 0) this.keepSelectionVisible(items, listHeight);
-    const rows = items.slice(this.scrollOffset, this.scrollOffset + listHeight).map((item) => this.renderRow(item, innerWidth));
+    const rows = items.slice(this.scrollOffset, this.scrollOffset + listHeight).map((item, index) => this.renderRow(item, innerWidth, 4 + index));
     while (rows.length < listHeight) rows.push("");
+    const selected = items.find((item) => item.key === this.selectedKey);
+    if (selected?.kind === "todo" && details[1] !== undefined) {
+      const start = visibleWidth(`${recordId(selected.todo.taskId, this.theme)} `);
+      const hit = delegateHitRegion(delegateLink(selected.todo.taskInfo), start, details[1], 5 + listHeight);
+      if (hit) this.delegateHits.push(hit);
+    }
 
     return [
       gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
@@ -128,6 +138,17 @@ export class WorksDashboard implements Component, Focusable {
       return;
     }
     if (this.minimized) return;
+    if (matchesKey(data, "d")) {
+      const selected = items.find((item) => item.key === this.selectedKey);
+      const link = selected?.kind === "todo" ? delegateLink(selected.todo.taskInfo) : undefined;
+      if (link) void this.openLinkedDelegate(link);
+      else {
+        this.message = "Select a delegated task with a Herdr pane link. Navigation requires Herdr.";
+        this.messageColor = "warning";
+        this.tui.requestRender();
+      }
+      return;
+    }
     this.messageColor = "warning";
     if (this.keybindings.matches(data, "tui.select.up")) {
       this.select(items, index - 1);
@@ -148,7 +169,21 @@ export class WorksDashboard implements Component, Focusable {
   }
 
   handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-    if (this.disposed || event.type !== "click" || event.button !== "left" || event.y !== 1) return undefined;
+    if (this.disposed) return undefined;
+    if (event.type === "press" && event.button === "left") {
+      const delegateHit = this.delegateHits.some((region) => event.y === region.y && this.isHit(event.x, region));
+      const headerHit = event.y === 1 && [this.copyHitRegion, this.openHitRegion, this.toggleHitRegion].some((region) => this.isHit(event.x, region));
+      // Own the gesture so Pi does not turn repeated control clicks into text selection.
+      if (delegateHit || headerHit) return { handled: true };
+    }
+    // Legacy mouse releases omit the button; Pi still normalizes the gesture as a click.
+    if (event.type !== "click" || (event.button !== "left" && event.button !== "none")) return undefined;
+    const hit = this.delegateHits.find((region) => event.y === region.y && this.isHit(event.x, region));
+    if (hit) {
+      void this.openLinkedDelegate(hit.link);
+      return { handled: true, focus: true, render: true };
+    }
+    if (event.y !== 1) return undefined;
     if (this.isHit(event.x, this.toggleHitRegion)) {
       this.toggleMinimized();
       return { handled: true, focus: true, render: true };
@@ -201,7 +236,7 @@ export class WorksDashboard implements Component, Focusable {
     this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, Math.max(0, items.length - height)));
   }
 
-  private renderRow(item: DashboardItem, width: number): string {
+  private renderRow(item: DashboardItem, width: number, y: number): string {
     const selected = item.key === this.selectedKey;
     const prefix = selected ? this.theme.fg("accent", "▶ ") : "  ";
     if (item.kind === "work") {
@@ -212,7 +247,11 @@ export class WorksDashboard implements Component, Focusable {
     }
     const metadata = this.theme.fg("dim", item.todo.status);
     const nameWidth = width - visibleWidth(prefix) - 5 - visibleWidth(metadata);
-    return truncateToWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${progressName(item.todo.taskName, taskCompletion(item.todo), nameWidth, `${recordId(item.todo.taskId, this.theme)} ${ownerBadge(item.todo.taskInfo, this.theme)} `)} ${metadata}`, width, "");
+    const line = truncateToWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${progressName(item.todo.taskName, taskCompletion(item.todo), nameWidth, `${recordId(item.todo.taskId, this.theme)} ${ownerBadge(item.todo.taskInfo, this.theme, Boolean(delegateLink(item.todo.taskInfo)))} `)} ${metadata}`, width, "");
+    const start = visibleWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${recordId(item.todo.taskId, this.theme)} `);
+    const hit = delegateHitRegion(delegateLink(item.todo.taskInfo), start, line, y);
+    if (hit) this.delegateHits.push(hit);
+    return line;
   }
 
   private renderDetails(items: DashboardItem[], width: number, budget: number): string[] {
@@ -226,7 +265,7 @@ export class WorksDashboard implements Component, Focusable {
       heading = `${lead}${progressName(item.work.workName, workCompletion(item.work), width - visibleWidth(lead + tail))}${tail}`;
     } else {
       const taskName = safeSingleLine(item.todo.taskName);
-      const taskLead = `${recordId(item.todo.taskId, this.theme)} ${ownerBadge(item.todo.taskInfo, this.theme)} `;
+      const taskLead = `${recordId(item.todo.taskId, this.theme)} ${ownerBadge(item.todo.taskInfo, this.theme, Boolean(delegateLink(item.todo.taskInfo)))} `;
       const workName = safeSingleLine(item.work.workName);
       const taskProgress = formatCompletion(taskCompletion(item.todo));
       const workProgress = formatCompletion(workCompletion(item.work));
@@ -261,7 +300,7 @@ export class WorksDashboard implements Component, Focusable {
     const copyAction = this.copying
       ? this.theme.fg("dim", "[Copying…]")
       : this.theme.fg("accent", this.theme.bold("[C Copy]"));
-    const openAction = this.theme.fg(this.opening ? "dim" : "accent", this.theme.bold("[O Open]"));
+    const openAction = this.theme.fg(this.opening ? "dim" : "accent", this.theme.underline(this.theme.bold("[O Open]")));
     const toggleLabel = this.minimized ? "[M Maximize]" : "[M Minimize]";
     const toggleAction = this.theme.fg("accent", this.theme.bold(toggleLabel));
     const actionsWidth = visibleWidth(copyAction) + 1 + visibleWidth(openAction) + 1 + visibleWidth(toggleAction);
@@ -288,6 +327,27 @@ export class WorksDashboard implements Component, Focusable {
 
   private isHit(x: number, region: HeaderHitRegion | undefined): boolean {
     return region !== undefined && x >= region.start && x < region.end;
+  }
+
+  private async openLinkedDelegate(link: DelegateLink): Promise<void> {
+    if (this.openingDelegate) return;
+    this.openingDelegate = true;
+    this.message = "Opening delegated agent in Herdr…";
+    this.messageColor = "warning";
+    this.tui.requestRender();
+    try {
+      await focusPane(link.paneId, this.cwd);
+      this.message = "Opened delegated agent in Herdr.";
+      this.messageColor = "success";
+    } catch (error) {
+      const reason = error instanceof Error ? safeSingleLine(error.message) : "Unknown error.";
+      this.message = `Could not open delegate. ${reason}`;
+      this.messageColor = "error";
+      if (!this.disposed) this.notify(this.message, "error");
+    } finally {
+      this.openingDelegate = false;
+      if (!this.disposed) this.tui.requestRender();
+    }
   }
 
   private async openInCursor(): Promise<void> {
@@ -335,7 +395,7 @@ export class WorksDashboard implements Component, Focusable {
   }
 
   private renderFooter(width: number): string {
-    const text = "C copy all · O open Cursor · M minimize · configured ↑/↓ select · PgUp/PgDn scroll details · confirm toggles · cancel closes";
+    const text = "C copy all · O open Cursor · D open delegate · M minimize · configured ↑/↓ select · PgUp/PgDn scroll details · confirm toggles · cancel closes";
     return truncateToWidth(this.theme.fg("muted", text), width, "");
   }
 }

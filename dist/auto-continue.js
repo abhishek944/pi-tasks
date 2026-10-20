@@ -68,7 +68,7 @@ export function registerTaskAutoContinue(pi, state) {
     host.on("agent_before_settle", (event, ctx) => {
         if (!active)
             return;
-        if (event.outcome !== "completed" || ctx.signal?.aborted) {
+        if (event.outcome === "aborted" || ctx.signal?.aborted) {
             armed = false;
             pendingUserInput = false;
             pendingMainRun = false;
@@ -90,10 +90,12 @@ export function registerTaskAutoContinue(pi, state) {
         }
         if (!settings.enabled || event.continue || event.context.pendingMessages.length > 0 || ctx.hasPendingMessages())
             return;
+        // Errors do not settle work; only explicit record states do. Count children independently.
+        const settled = new Set(["blocked", "completed", "cancelled"]);
         const records = [
-            ...state.listWorks().filter((work) => work.status === "active")
+            ...state.listWorks().filter((work) => !settled.has(work.status))
                 .map((work) => ({ id: work.workId, name: work.workName, status: work.status })),
-            ...state.listTodos().filter((todo) => todo.status === "active")
+            ...state.listTodos().filter((todo) => !settled.has(todo.status))
                 .map((todo) => ({ id: todo.taskId, workId: todo.workId, name: todo.taskName, status: todo.status })),
         ];
         if (records.length === 0)

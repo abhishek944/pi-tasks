@@ -1,7 +1,9 @@
+import { delegateLink, focusPane } from "./agents/links.js";
+import { registerAgentTools } from "./agents/tools.js";
 import { registerTaskAutoContinue } from "./auto-continue.js";
 import { registerWorksCommand } from "./command.js";
 import { GitStatusCache } from "./git-status.js";
-import { openRepository } from "./open-repository.js";
+import { openRepository, openSession } from "./open-repository.js";
 import { TaskState } from "./state.js";
 import { safeSingleLine } from "./text.js";
 import { registerTaskTools } from "./tools.js";
@@ -13,6 +15,7 @@ export default function tasksExtension(pi) {
     const git = new GitStatusCache();
     panel = new TasksPanelHost(state, git);
     registerTaskTools(pi, state);
+    registerAgentTools(pi, state);
     registerTrackingGuidance(pi);
     registerTaskAutoContinue(pi, state);
     registerWorksCommand(pi, state, git);
@@ -20,10 +23,31 @@ export default function tasksExtension(pi) {
         description: "Set the works panel display mode",
         handler: async (args, ctx) => {
             const requested = args.trim();
-            if (requested === "open") {
+            const delegateTask = /^delegate\s+(T\d+)$/.exec(requested)?.[1];
+            if (delegateTask) {
+                const todo = state.getTodo(delegateTask);
+                const link = todo ? delegateLink(todo.taskInfo) : undefined;
+                if (!link) {
+                    ctx.ui.notify("This task has no Herdr delegate link, or Pi is not running inside Herdr.", "warning");
+                    return;
+                }
                 try {
-                    await openRepository(ctx.cwd);
-                    ctx.ui.notify("Opened repository in Cursor.", "info");
+                    await focusPane(link.paneId, ctx.cwd);
+                    ctx.ui.notify("Opened delegated agent in Herdr.", "info");
+                }
+                catch (error) {
+                    const reason = error instanceof Error ? safeSingleLine(error.message) : "Unknown error.";
+                    ctx.ui.notify(`Could not open delegate. ${reason}`, "error");
+                }
+                return;
+            }
+            if (requested === "open" || requested === "open-session") {
+                try {
+                    if (requested === "open-session")
+                        await openSession(ctx.cwd, ctx.sessionManager.getSessionId());
+                    else
+                        await openRepository(ctx.cwd);
+                    ctx.ui.notify(requested === "open-session" ? "Opened session artifacts in Cursor." : "Opened repository in Cursor.", "info");
                 }
                 catch (error) {
                     const reason = error instanceof Error ? ` ${safeSingleLine(error.message)}` : "";
@@ -38,7 +62,7 @@ export default function tasksExtension(pi) {
             }
             const mode = requested === "floating" || requested === "widget" || requested === "off" ? requested : undefined;
             if (!mode) {
-                ctx.ui.notify("Usage: /works-panel floating|widget|off|minimize|maximize|open", "info");
+                ctx.ui.notify("Usage: /works-panel floating|widget|off|minimize|maximize|open|open-session or /works-panel delegate T<number>", "info");
                 return;
             }
             panel?.setMode(mode);

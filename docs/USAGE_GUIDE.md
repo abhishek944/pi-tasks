@@ -73,9 +73,9 @@ This is off by default and requires Pi 1.2.0+. Add the following to global `~/.p
 }
 ```
 
-Send a normal prompt to start. If the agent finishes with active works or todos, it receives a message to continue and verify them. Blocked, completed, and cancelled records do not cause another continuation. Keep the parent work synchronized too, and record a genuine blocker reason in its information field before handing off.
+Send a normal prompt to start. After success or failure, if any work or todo is not blocked, completed, or cancelled, the agent receives a message to continue and verify it. Children count independently of their parent; legacy planned/pending records restore as active. Blocked, completed, and cancelled records do not cause another continuation. Keep the parent work synchronized too, and record a genuine blocker reason in its information field before handing off.
 
-Press Escape/abort to stop. The extension will not restart from a monitor wake or another extension's message; send a new main prompt when you want it to resume. Failed runs also stop instead of being retried by this feature. Reloading or navigating session branches does not silently resume unfinished work.
+Press Escape/abort to stop. The extension will not restart from a monitor wake or another extension's message; send a new main prompt when you want it to resume. Failed runs do not disarm continuation: after native retries, unfinished records request another run. Repeated provider failures can therefore keep consuming tokens with no configured limit. Reloading or navigating session branches does not silently resume unfinished work.
 
 Omitting `maxContinuations` means no continuation limit: it can keep consuming tokens while unfinished records remain. Manual abort and all other stopping conditions still apply. To cap it, add a positive integer such as `"maxContinuations": 10`. After the configured number of extra continuations, the extension warns and hands control back without changing records. A fresh accepted main user run resets the limit; a rejected prompt or steering/follow-up input queued inside a running activity does not. Set `enabled` to `false` and reload to disable the feature. It checks recorded states, not whether every user requirement was captured or genuinely verified.
 
@@ -125,7 +125,54 @@ owner: self. This is a small, tightly coupled change.
 The task covers the panel label and its documentation.
 ```
 
-The compact panel title shows the current full Pi session ID obtained directly from the session context, including when minimized or in widget mode. It shortens with an ellipsis only when necessary to fit beside Copy, Open, and Minimize/Maximize. Overflow range/hint text shares the available title space. Session changes refresh the title; no script or shell process runs during rendering. If the session ID is absent, it shows `Session unavailable`. The `/works` dashboard retains its existing title.
+### Delegate pane links
+
+`[delegate]` describes the ownership decision; it does not launch an agent. AgentCreate automatically adds `herdr-pane: <paneId>` and `herdr-monitor: <monitorId>` lines to the parent task's existing details. TodoUpdate keeps those lines when both old and new ownership stay delegate and the new details do not supply replacement link metadata. Explicit metadata takes precedence; changing ownership or AgentClose can clear the link. Set `herdr-pane: none` to explicitly unlink without changing ownership. No new task schema or private agent registry is added. AgentClose clears matching links without changing ownership or completion.
+
+## Agent tools
+
+These are simple Herdr CLI wrappers in pi-tasks, with no pi-herdr-agents dependency. AgentCreate also calls the existing MonitorCreate tool; AgentClose calls MonitorStop. Those two need modern Pi nested calls and the updated pi-loop-monitor result metadata. Base Work/Todo tracking and ordinary CLI wrappers do not depend on a private monitoring runtime.
+
+| Tool | Purpose |
+| --- | --- |
+| `AgentCreate` | Create an unfocused tab, start Pi and register monitoring; return paneId/tabId/monitorId plus a prepared assignment. No prompt is sent. |
+| `AgentList` | `herdr agent list` (includes unrelated agents). |
+| `AgentStatus` | `herdr agent get <paneId>`. |
+| `AgentOutput` | `herdr pane read`; 50 trailing lines by default, up to 200. |
+| `AgentSend` | `herdr agent prompt <paneId> <message>` without waiting. |
+| `AgentInterrupt` | `herdr agent send-keys <paneId> esc`. |
+| `AgentClose` | MonitorStop for the supplied monitorId, then `herdr pane close <paneId>`. |
+| `AgentFocus` | `herdr agent focus <paneId>`; also used by delegate links. |
+
+For an existing active Work/Todo whose `taskInfo` starts with `owner: delegate`, call:
+
+```typescript
+AgentCreate({
+  workId: "W1",
+  taskId: "T2",
+  taskDir: "var/<full-current-sessionId>/W1/T2",
+  assignment: "Review the approved change. Do not edit files or run tests.",
+  provider: "<chosen-provider>",
+  model: "<chosen-model-id>",
+  thinking: "high",
+  onSignal: "Inspect worker output. Help with blockers; review the actual changes before completing the task.",
+  onDone: "The monitor stopped. Inspect its status and recover monitoring if still needed."
+})
+```
+
+Replace placeholders using the existing implement path convention and model-routing-policy. The wrapper passes taskDir to the prepared worker assignment; it does not create folders or verify the running model. It adds parent context and worker-local tracking instructions without granting extra permissions.
+
+AgentCreate returns `assignmentSent: false`. Confirm MonitorList shows `Herdr signal subscription ready for <paneId>`, then call `AgentSend({ paneId, message: assignment })` using the returned assignment. Do not add a second monitor. Follow-up messages use that same paneId and existing subscription.
+
+`onSignal` is a wake instruction for worker state changes, including blocked, idle and done. The monitor keeps watching. `onDone` is a wake instruction if the monitor process terminates, not a worker-completion callback; when omitted, pi-loop-monitor supplies its recovery instruction. Neither returns the worker's complete answer automatically. The parent uses `AgentOutput` and inspects actual files before marking tasks complete. Do not add a duplicate monitor or close a worker merely because it reports done.
+
+Use actual paneId values, not pane names or a separate agent handle. These wrappers assume an agent pane is not repurposed. There are no process/session checks, startup receipts, registry, automatic reconnection, retry or rollback framework. Ordinary CLI errors are returned with any handles already obtained so the caller can inspect and decide what to do. Close only resources you created; a done signal does not automatically close anything or complete a task. If monitoring stops, use the existing monitor tools to inspect/reconnect explicitly.
+
+Inside Herdr (`HERDR_ENV=1`), a linked `[delegate]` is underlined. In fullscreen mode, click that badge in compact/widget rows, dashboard rows, or task detail headings to focus its agent pane. Only fully visible badges are clickable. In `/works`, select the task and press `d`; `/works-panel delegate T<number>` provides a command path, including regular terminal mode. `[Open]` / `[O Open]` are also underlined and still open Cursor. Unlinked badges are not underlined, because they are not navigation actions.
+
+Navigation directly focuses the linked paneId through Herdr. Closed panes, missing Herdr CLI and command errors are reported. No subprocess runs during rendering. Agent tools coordinate Herdr resources; pi-loop-monitor remains the sole monitoring runtime. Outside Herdr, badges remain informational.
+
+The compact panel no longer displays the session ID. Its underlined `[Open session]` action sits immediately after Copy in floating, widget and minimized layouts. It opens this agent's existing artifact directory under repository `var/` in Cursor, including a nested delegated session folder. If no folder exists, it creates `var/<full-sessionId>/`; multiple matching folders report an ambiguity rather than guessing. Session identity comes from Pi's context, not a pane name. Folder resolution and Cursor launch happen only on activation, never during rendering. `/works-panel open-session` is the keyboard-command alternative. The existing Open action still opens the repository. Narrow compact headers use `[-]`/`[+]` for Minimize/Maximize so all actions fit. The `/works` dashboard retains its existing title and controls.
 
 The panel defaults to a floating top-right layout and does not take keyboard focus. A slim, separated right-hand column keeps work and task percentages aligned and visible even when names are long; the left side retains names, status icons and work task-counts. It hides on small terminals. The top border centers repository-wide Git status: `git main · S2 U3 ?1` means two staged files, three unstaged files, and one untracked file; a file with both staged and unstaged edits counts in both. A clean repository shows `git main · clean`. Long branches shorten before counts. Detached HEAD shows `@` plus the short commit. Git remains visible while minimized and adds no content row.
 
@@ -133,12 +180,13 @@ The asynchronous Git cache refreshes every second while a view is attached; file
 
 In fullscreen TUI mode, click Copy in its title bar to copy every work and todo as Markdown, Open to run `cursor .` in the current session directory, or Minimize to collapse the panel to a small title bar. Copy and Open remain available while minimized, and Maximize restores the rows. Cursor's command-line launcher must be on PATH; launch failures produce visible error feedback. When more rows exist than fit, the floating panel starts at the newest rows; move the mouse over it and use the wheel to scroll older or newer rows without taking focus from the editor. In regular terminal mode, open `/works` to browse and copy the complete list.
 
-Use `/works-panel minimize`, `/works-panel maximize`, or `/works-panel open` when mouse input is unavailable. Use `/works-panel widget` for a right-aligned layout above the editor that renders every row and retains the clickable title actions, `/works-panel floating` to return to the floating layout, or `/works-panel off` to hide it.
+Use `/works-panel minimize`, `/works-panel maximize`, `/works-panel open`, or `/works-panel open-session` when mouse input is unavailable. Use `/works-panel widget` for a right-aligned layout above the editor that renders every row and retains the clickable title actions, `/works-panel floating` to return to the floating layout, or `/works-panel off` to hide it.
 
 Run `/works` for full details. Its top border mirrors repository-wide Git status, and its top bar includes Copy, Open, and Minimize actions. In fullscreen TUI mode, click Minimize to collapse the dashboard to a top bar showing the current work and todo totals; click Maximize to restore it. The actions also have keyboard shortcuts that work in regular terminal mode.
 
 - `c`: copy all works and todos as Markdown
 - `o`: open the current repository/session directory in Cursor
+- `d`: open the selected task's linked delegated agent
 - `m`: minimize or maximize the dashboard
 - Fullscreen left click: activate Copy, Open, Minimize, or Maximize
 - Configured Up/Down keys: select

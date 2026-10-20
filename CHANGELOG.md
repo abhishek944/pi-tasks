@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.0 - 2026-10-21
+
+- Activate the delegate's Herdr tab explicitly after pane focus so GUI clicks switch the visible tab, not just server focus state.
+
+- Continue unfinished work after failed runs instead of disarming; only blocked, completed, and cancelled record states are settled, with children counted independently. Preserve explicit abort, settings, queue, tracking-tool and continuation-limit guards.
+
+- Fix delegate and panel navigation mouse gestures: claim control presses before text selection and accept buttonless release clicks.
+- Fix AgentSend argument forwarding for Herdr's prompt command and preserve delegate pane links during ordinary TodoUpdate detail edits.
+
+- Replace the compact panel's session-ID title with an underlined Open session action beside Copy, opening the direct/nested agent artifact folder in Cursor with a command alternative; keep repository Open and width-safe controls.
+
+- Add simple Herdr AgentCreate/List/Status/Output/Send/Interrupt/Close/Focus CLI wrappers using paneId directly, automatic task links and onSignal/onDone passthrough to existing pi-loop-monitor. Confirm monitoring before explicit AgentSend; no private agent lifecycle manager.
+- Make linked delegate badges focus their panes and provide fullscreen clicks plus dashboard/command keyboard paths; keep ordinary task progress parent-owned.
+- Underline Cursor Open actions and linked delegate badges; leave unlinked ownership informational and preserve clipping, scrolling, and progress columns.
+
 ## 0.9.3 - 2026-10-21
 
 - Give work IDs, task IDs, and self/delegate ownership badges distinct theme-aware colors in compact panels, dashboard rows, and detail headings. Keep unassigned ownership muted and preserve text, progress columns, and Markdown exports.

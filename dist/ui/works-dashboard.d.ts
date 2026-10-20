@@ -21,6 +21,8 @@ export declare class WorksDashboard implements Component, Focusable {
     private messageColor;
     private copying;
     private opening;
+    private openingDelegate;
+    private delegateHits;
     private minimized;
     private readonly unsubscribeGit;
     private openHitRegion;
@@ -43,6 +45,7 @@ export declare class WorksDashboard implements Component, Focusable {
     private renderHeader;
     private toggleMinimized;
     private isHit;
+    private openLinkedDelegate;
     private openInCursor;
     private copyAllAsMarkdown;
     private renderFooter;

@@ -9,12 +9,20 @@ For every normal request that starts or continues work, Pi should:
 3. Create or update detailed todos for the requested scope.
 4. Mark the current todo active before starting it.
 5. During longer tasks, report interim progress after roughly 5–10 meaningful working steps or a milestone, when an estimate is possible.
-6. Mark the todo completed, blocked, or cancelled after the attempt.
+6. Mark the todo blocked immediately if its next step must wait on a dependency; otherwise update it after the attempt as active, completed, or cancelled.
 7. Complete the work only when its required todos are complete.
 
 The extension applies this guidance across all loaded skills and does not skip work merely because it looks small. It does not update tracking during `/ask`, `/btw`, or BTW side threads.
 
 Write `workInfo` and `taskInfo` in normal prose with full sentences and spaces between words. Conversational brevity modes do not apply to stored records; do not concatenate words to shorten them. This is model-facing guidance, not automatic repair of existing text.
+
+## Statuses and dependencies
+
+Works and todos use only `active`, `blocked`, `completed`, and `cancelled`. New records default to `active`; saved legacy `planned` and `pending` statuses restore as active but are no longer accepted by tools.
+
+Use `blocked` immediately when a task cannot proceed until another agent produces output, a review finishes, an external response arrives, the user responds, permission is granted, or another obstacle is resolved. Record which dependency it awaits and what will unblock it in `taskInfo`; retain its current completion estimate. Work actually executing in another agent may remain active, but downstream tasks waiting for that output are blocked.
+
+Keep the parent work active while some required work can proceed. When all remaining work must wait, mark the parent blocked too and record the reason and resume condition in `workInfo`. When the dependency resolves and work resumes, mark the affected records active. Neither blocked status nor changing it schedules a wake automatically; use the appropriate monitor or event when an automatic notification is needed.
 
 ## Continue unfinished work automatically
 
@@ -30,7 +38,7 @@ This is off by default and requires Pi 1.2.0+. Add the following to global `~/.p
 }
 ```
 
-Send a normal prompt to start. If the agent finishes with planned/active works or pending/active todos, it receives a message to continue and verify them. Blocked, completed, and cancelled records do not cause another continuation. Keep the parent work synchronized too, and record a genuine blocker reason in its information field before handing off.
+Send a normal prompt to start. If the agent finishes with active works or todos, it receives a message to continue and verify them. Blocked, completed, and cancelled records do not cause another continuation. Keep the parent work synchronized too, and record a genuine blocker reason in its information field before handing off.
 
 Press Escape/abort to stop. The extension will not restart from a monitor wake or another extension's message; send a new main prompt when you want it to resume. Failed runs also stop instead of being retried by this feature. Reloading or navigating session branches does not silently resume unfinished work.
 

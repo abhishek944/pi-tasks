@@ -55,7 +55,7 @@ export class TaskState {
         const todo = this.todos.get(taskId);
         return todo ? { ...todo } : undefined;
     }
-    createWork(workName, workInfo, status = "planned") {
+    createWork(workName, workInfo, status = "active") {
         if (this.works.size >= MAX_WORKS)
             throw new Error(`Maximum of ${MAX_WORKS} works reached.`);
         const now = Date.now();
@@ -89,7 +89,7 @@ export class TaskState {
         this.record({ version: 1, type: "work-deleted", at: Date.now(), workId });
         return true;
     }
-    createTodo(workId, taskName, taskInfo, status = "pending", completionPercent) {
+    createTodo(workId, taskName, taskInfo, status = "active", completionPercent) {
         if (!this.works.has(workId))
             throw new Error(`Work ${workId} not found.`);
         if (this.todos.size >= MAX_TODOS)
@@ -138,21 +138,24 @@ export class TaskState {
     }
     apply(event) {
         switch (event.type) {
-            case "work-created":
+            case "work-created": {
+                const status = restoredStatus(event.work.status);
                 assertId(event.work.workId, "W");
-                if (typeof event.work.workName !== "string" || typeof event.work.workInfo !== "string" || !isWorkStatus(event.work.status))
+                if (typeof event.work.workName !== "string" || typeof event.work.workInfo !== "string" || !status)
                     throw new Error("Malformed work entry.");
-                this.works.set(event.work.workId, { ...event.work, workName: safeSingleLine(event.work.workName) });
+                this.works.set(event.work.workId, { ...event.work, status, workName: safeSingleLine(event.work.workName) });
                 this.nextWorkId = Math.max(this.nextWorkId, numericId(event.work.workId) + 1);
                 break;
+            }
             case "work-updated": {
+                const status = restoredStatus(event.patch.status);
                 const work = this.works.get(event.workId);
                 if (work)
                     this.works.set(event.workId, {
                         ...work,
                         ...(typeof event.patch.workName === "string" ? { workName: safeSingleLine(event.patch.workName) } : {}),
                         ...(typeof event.patch.workInfo === "string" ? { workInfo: event.patch.workInfo } : {}),
-                        ...(isWorkStatus(event.patch.status) ? { status: event.patch.status } : {}),
+                        ...(status ? { status } : {}),
                         updatedAt: event.at,
                     });
                 break;
@@ -163,26 +166,30 @@ export class TaskState {
                     if (todo.workId === event.workId)
                         this.todos.delete(taskId);
                 break;
-            case "todo-created":
+            case "todo-created": {
+                const status = restoredStatus(event.todo.status);
                 assertId(event.todo.taskId, "T");
-                if (typeof event.todo.workId !== "string" || typeof event.todo.taskName !== "string" || typeof event.todo.taskInfo !== "string" || !isTodoStatus(event.todo.status))
+                if (typeof event.todo.workId !== "string" || typeof event.todo.taskName !== "string" || typeof event.todo.taskInfo !== "string" || !status)
                     throw new Error("Malformed todo entry.");
                 if (this.works.has(event.todo.workId))
                     this.todos.set(event.todo.taskId, {
                         ...event.todo,
+                        status,
                         taskName: safeSingleLine(event.todo.taskName),
                         completionPercent: taskCompletion(event.todo),
                     });
                 this.nextTaskId = Math.max(this.nextTaskId, numericId(event.todo.taskId) + 1);
                 break;
+            }
             case "todo-updated": {
+                const status = restoredStatus(event.patch.status);
                 const todo = this.todos.get(event.taskId);
                 if (todo) {
                     const updated = {
                         ...todo,
                         ...(typeof event.patch.taskName === "string" ? { taskName: safeSingleLine(event.patch.taskName) } : {}),
                         ...(typeof event.patch.taskInfo === "string" ? { taskInfo: event.patch.taskInfo } : {}),
-                        ...(isTodoStatus(event.patch.status) ? { status: event.patch.status } : {}),
+                        ...(status ? { status } : {}),
                         ...(event.patch.completionPercent !== undefined ? { completionPercent: event.patch.completionPercent } : {}),
                         updatedAt: event.at,
                     };
@@ -230,11 +237,13 @@ function assertId(id, prefix) {
         throw new Error(`Malformed ${prefix === "W" ? "work" : "todo"} ID.`);
     }
 }
-function isWorkStatus(value) {
-    return ["planned", "active", "blocked", "completed", "cancelled"].includes(String(value));
-}
-function isTodoStatus(value) {
-    return ["pending", "active", "blocked", "completed", "cancelled"].includes(String(value));
+function restoredStatus(value) {
+    // Keep legacy branch events readable without exposing retired statuses in tools.
+    if (value === "planned" || value === "pending")
+        return "active";
+    if (value === "active" || value === "blocked" || value === "completed" || value === "cancelled")
+        return value;
+    return undefined;
 }
 function parseEvent(value) {
     if (!value || typeof value !== "object")

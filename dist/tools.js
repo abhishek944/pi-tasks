@@ -3,8 +3,8 @@ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "
 import { Type } from "typebox";
 import { formatCompletion, taskCompletion, workCompletion } from "./progress.js";
 import { renderTaskCall, renderTaskResult, taskResult } from "./tool-result.js";
-const WorkStatusSchema = StringEnum(["planned", "active", "blocked", "completed", "cancelled"]);
-const TodoStatusSchema = StringEnum(["pending", "active", "blocked", "completed", "cancelled"]);
+const StatusSchema = StringEnum(["active", "blocked", "completed", "cancelled"]);
+const STATUS_GUIDANCE = "New records default to active. Use blocked immediately when the next step must wait for agent output, review, an external response, user input, permission, or another obstacle. Record the dependency and resume condition in the information field and retain progress. Keep the parent work active only while some required work can proceed; otherwise mark it blocked. Return blocked records to active when the dependency resolves and work resumes.";
 const CompletionSchema = Type.Union([Type.Integer({ minimum: 0, maximum: 100 }), Type.Null()], {
     description: "AI-reported approximate task completion, not elapsed time or a status-to-percentage mapping. Use null for unknown; reserve 100 for verified completed status. Work progress is the equal average of non-cancelled tasks.",
 });
@@ -15,7 +15,7 @@ export function registerTaskTools(pi, state) {
     pi.registerTool({
         name: "WorkCreate",
         label: "WorkCreate",
-        description: `Create a session-scoped work item. Use detailed workInfo that preserves the goal, context, scope, constraints, decisions, and expected outcome. ${DETAILS_GUIDANCE}`,
+        description: `Create a session-scoped work item. Use detailed workInfo that preserves the goal, context, scope, constraints, decisions, and expected outcome. ${STATUS_GUIDANCE} ${DETAILS_GUIDANCE}`,
         promptSnippet: "Create a session-scoped work item before starting substantial actionable work",
         promptGuidelines: [
             "Use WorkCreate for normal requests that start new work in the main conversation; never use it during /ask or /btw.",
@@ -25,7 +25,7 @@ export function registerTaskTools(pi, state) {
         parameters: Type.Object({
             workName: NameSchema,
             workInfo: InfoSchema,
-            status: Type.Optional(WorkStatusSchema),
+            status: Type.Optional(StatusSchema),
         }, { additionalProperties: false }),
         execute(_id, params) {
             const work = state.createWork(params.workName, params.workInfo, params.status);
@@ -40,7 +40,7 @@ export function registerTaskTools(pi, state) {
         description: "List session-scoped works and their associated todos. Optional limit returns the newest N matching works after filtering, in chronological order; omitted returns all. Results include detailed workInfo and taskInfo and are truncated at 50KB or 2000 lines.",
         parameters: Type.Object({
             workId: Type.Optional(Type.String()),
-            status: Type.Optional(WorkStatusSchema),
+            status: Type.Optional(StatusSchema),
             limit: Type.Optional(Type.Integer({ minimum: 1, description: "Return only the newest N matching works; omit for all." })),
         }, { additionalProperties: false }),
         execute(_id, params) {
@@ -55,14 +55,14 @@ export function registerTaskTools(pi, state) {
     pi.registerTool({
         name: "WorkUpdate",
         label: "WorkUpdate",
-        description: `Update a work's name, detailed information, or status. Use before implementation to mark relevant work active and after progress to keep its detailed context current. ${DETAILS_GUIDANCE}`,
+        description: `Update a work's name, detailed information, or status. Use before implementation to mark relevant work active and after progress to keep its detailed context current. ${STATUS_GUIDANCE} ${DETAILS_GUIDANCE}`,
         promptSnippet: "Update work status and detailed context as actionable work progresses",
         promptGuidelines: ["Use WorkUpdate and TodoUpdate before and after actionable main-conversation work; never update tracking during /ask or /btw.", DETAILS_GUIDANCE],
         parameters: Type.Object({
             workId: Type.String(),
             workName: Type.Optional(NameSchema),
             workInfo: Type.Optional(InfoSchema),
-            status: Type.Optional(WorkStatusSchema),
+            status: Type.Optional(StatusSchema),
         }, { additionalProperties: false, minProperties: 2 }),
         execute(_id, params) {
             const work = state.updateWork(params.workId, { workName: params.workName, workInfo: params.workInfo, status: params.status });
@@ -90,7 +90,7 @@ export function registerTaskTools(pi, state) {
     pi.registerTool({
         name: "TodoCreate",
         label: "TodoCreate",
-        description: `Create a todo under an existing work, optionally reporting approximate completionPercent (0 for known unstarted work, null for unknown). For longer tasks, use TodoUpdate for interim estimates after roughly 5–10 meaningful working steps or a milestone; do not wait until completion. taskInfo must contain enough detailed context, scope, constraints, expected outcome, and verification guidance to execute the task without guessing. ${DETAILS_GUIDANCE}`,
+        description: `Create a todo under an existing work, optionally reporting approximate completionPercent (0 for known unstarted work, null for unknown). For longer tasks, use TodoUpdate for interim estimates after roughly 5–10 meaningful working steps or a milestone; do not wait until completion. taskInfo must contain enough detailed context, scope, constraints, expected outcome, and verification guidance to execute the task without guessing. ${STATUS_GUIDANCE} ${DETAILS_GUIDANCE}`,
         promptSnippet: "Create detailed todos under the current work before implementation",
         promptGuidelines: [
             "Use TodoCreate only under an existing work and only for actionable main-conversation work; never use it during /ask or /btw.",
@@ -101,7 +101,7 @@ export function registerTaskTools(pi, state) {
             workId: Type.String(),
             taskName: NameSchema,
             taskInfo: InfoSchema,
-            status: Type.Optional(TodoStatusSchema),
+            status: Type.Optional(StatusSchema),
             completionPercent: Type.Optional(CompletionSchema),
         }, { additionalProperties: false }),
         execute(_id, params) {
@@ -118,7 +118,7 @@ export function registerTaskTools(pi, state) {
         parameters: Type.Object({
             taskId: Type.Optional(Type.String()),
             workId: Type.Optional(Type.String()),
-            status: Type.Optional(TodoStatusSchema),
+            status: Type.Optional(StatusSchema),
             limit: Type.Optional(Type.Integer({ minimum: 1, description: "Return only the newest N matching todos; omit for all." })),
         }, { additionalProperties: false }),
         execute(_id, params) {
@@ -133,14 +133,14 @@ export function registerTaskTools(pi, state) {
     pi.registerTool({
         name: "TodoUpdate",
         label: "TodoUpdate",
-        description: `Update a todo's name, detailed information, status, or completionPercent. For longer tasks, include an optional completionPercent estimate after roughly 5–10 meaningful working steps or a milestone, not just at completion or in status-only updates. Explain evidence and remaining work in taskInfo; use null when unknown and never increase a percentage without evidence. Blocking retains progress. Reserve completed/100 for verified completion. ${DETAILS_GUIDANCE}`,
+        description: `Update a todo's name, detailed information, status, or completionPercent. For longer tasks, include an optional completionPercent estimate after roughly 5–10 meaningful working steps or a milestone, not just at completion or in status-only updates. Explain evidence and remaining work in taskInfo; use null when unknown and never increase a percentage without evidence. Blocking retains progress. Reserve completed/100 for verified completion. ${STATUS_GUIDANCE} ${DETAILS_GUIDANCE}`,
         promptSnippet: "Keep todo status and detailed context synchronized with active work",
         promptGuidelines: ["Use TodoUpdate immediately before and after working on a todo in the main conversation; never update tracking during /ask or /btw.", "During longer tasks, include an evidence-based completionPercent estimate after roughly 5–10 meaningful working steps or a milestone; do not wait until completion or only update status. Estimates remain optional: use null when unknown, and leave a percentage unchanged if there is no new evidence. Explain evidence and remaining work in taskInfo; only verified completed tasks may reach 100. Work completion is calculated automatically from tasks.", DETAILS_GUIDANCE],
         parameters: Type.Object({
             taskId: Type.String(),
             taskName: Type.Optional(NameSchema),
             taskInfo: Type.Optional(InfoSchema),
-            status: Type.Optional(TodoStatusSchema),
+            status: Type.Optional(StatusSchema),
             completionPercent: Type.Optional(CompletionSchema),
         }, { additionalProperties: false, minProperties: 2 }),
         execute(_id, params) {

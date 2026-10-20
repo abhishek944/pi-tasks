@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0 - 2026-10-20
+
+- Remove `planned` and `pending` from work and todo tools; both now use `active`, `blocked`, `completed`, and `cancelled`, with `active` as the creation default.
+- Restore legacy `planned` and `pending` session events as `active` without rewriting history or losing records.
+- Explicitly mark dependent tasks blocked while awaiting agent output, reviews, external responses, user input, permissions, or other obstacles; retain progress and record the dependency and resume condition.
+- Clarify parent blocking and resumption guidance, and restrict auto-continuation to active works and todos.
+
 ## 0.8.3 - 2026-10-18
 
 - Clarify tool and tracking guidance to request interim completion estimates during longer tasks after roughly 5–10 meaningful working steps or a milestone, rather than only at completion.

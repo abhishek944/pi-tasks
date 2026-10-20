@@ -18,11 +18,15 @@ Limits:
 
 ## Data
 
-A work contains `workId`, `workName`, `workInfo`, `status`, `createdAt`, and `updatedAt`. Work status is `planned`, `active`, `blocked`, `completed`, or `cancelled`.
+A work contains `workId`, `workName`, `workInfo`, `status`, `createdAt`, and `updatedAt`. Work status is `active`, `blocked`, `completed`, or `cancelled`; new works default to `active`.
 
-A todo contains `taskId`, `workId`, `taskName`, `taskInfo`, `status`, optional `completionPercent`, `createdAt`, and `updatedAt`. Todo status is `pending`, `active`, `blocked`, `completed`, or `cancelled`.
+A todo contains `taskId`, `workId`, `taskName`, `taskInfo`, `status`, optional `completionPercent`, `createdAt`, and `updatedAt`. Todo status uses the same four values; new todos default to `active`.
 
 The public list shape assembles each work with `tasks: Todo[]`; tasks are stored separately to avoid duplicate state. Work progress is derived, not independently stored or editable.
+
+`Blocked` includes waiting for another agent’s output, review, an external response, user input, permission, or a genuine obstacle. Mark dependent tasks blocked immediately, with the dependency and resume condition in their information field. Actual delegated execution can remain active. Keep the parent active only while some required work can proceed; otherwise mark it blocked too. Resume affected records as active when the dependency resolves and work resumes. These are agent instructions, not automatic dependency detection or a wake mechanism.
+
+Replay normalizes legacy `planned` and `pending` statuses to `active` in both creation and update events without rewriting history. Tools accept only the four current statuses. Existing IDs, details, and progress are preserved.
 
 ### Completion progress
 
@@ -50,7 +54,7 @@ A fresh accepted main interactive/RPC run arms a new continuation epoch. Input i
 
 The synchronous `agent_before_settle` handler runs after native retries, compaction, and queued work. It requires a completed outcome, a non-aborted signal, no pending messages in either the boundary preview or runtime queue, and no continuation already requested by an earlier handler. Pi is still busy at this actionable boundary, so it does not require `ctx.isIdle()`. Instead it appends one custom-message draft and requests one native continuation; Pi owns committing it and honoring cancellation. No detached prompt, timer, background worker, or polling loop is created.
 
-Planned/active works and pending/active todos on the current branch are unfinished. Completed, blocked, and cancelled records are settled. A settled parent does not hide an unfinished child. The prompt includes a bounded preview of IDs, names and statuses, and directs the agent to list tools for full details. No records means no continuation. The extension never mutates statuses, verifies work independently, or treats a blocker label as proof of an actual dependency.
+Active works and todos on the current branch require continuation. Completed, blocked, and cancelled records are settled. A settled parent does not hide an unfinished child. The prompt includes a bounded preview of IDs, names and statuses, and directs the agent to list tools for full details. No records means no continuation. The extension never mutates statuses, verifies work independently, or treats a blocker label as proof of an actual dependency.
 
 When `maxContinuations` is supplied, at most that many extra continuations are requested per fresh accepted main user run. The next unfinished boundary warns once and suspends continuation; a fresh user prompt resets the cap. With no limit supplied, continuation can consume tokens indefinitely while unfinished records remain, until interrupted, failed, disabled or otherwise suspended. This is not a cost cap or a cap on native tool/retry requests, and another extension may independently request work. Settings changes take effect when Pi reloads effective settings, normally through `/reload`.
 

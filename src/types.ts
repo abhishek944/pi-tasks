@@ -1,5 +1,5 @@
-export type WorkStatus = "planned" | "active" | "blocked" | "completed" | "cancelled";
-export type TodoStatus = "pending" | "active" | "blocked" | "completed" | "cancelled";
+export type WorkStatus = "active" | "blocked" | "completed" | "cancelled";
+export type TodoStatus = WorkStatus;
 
 export interface Work {
   workId: string;

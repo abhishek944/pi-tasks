@@ -10,6 +10,9 @@ export declare class TaskState {
     private todos;
     private nextWorkId;
     private nextTaskId;
+    private focusedTaskId;
+    private workingSince;
+    private agentRunning;
     constructor(pi: ExtensionAPI, onChange: () => void);
     restore(ctx: ExtensionContext): void;
     listWorks(filter?: {
@@ -22,11 +25,19 @@ export declare class TaskState {
     }): Todo[];
     getWork(workId: string): Work | undefined;
     getTodo(taskId: string): Todo | undefined;
+    private snapshot;
+    /** Gate the selected task on actual agent execution, not task status. */
+    setAgentRunning(running: boolean): void;
+    setWorking(taskId: string, working: boolean): void;
+    clearWorking(): void;
+    private saveInterval;
     createWork(workName: string, workInfo: string): Work;
     updateWork(workId: string, patch: Partial<Pick<Work, "workName" | "workInfo">>): Work;
     deleteWork(workId: string): boolean;
     createTodo(workId: string, taskName: string, taskInfo: string, status?: TodoStatus, completionPercent?: number | null): Todo;
-    updateTodo(taskId: string, patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status" | "completionPercent">>): Todo;
+    updateTodo(taskId: string, patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status" | "completionPercent">> & {
+        working?: boolean;
+    }): Todo;
     deleteTodo(taskId: string): boolean;
     private record;
     private apply;

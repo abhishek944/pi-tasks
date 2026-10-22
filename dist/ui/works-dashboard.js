@@ -5,8 +5,9 @@ import { formatWorksMarkdown } from "../markdown.js";
 import { openRepository } from "../open-repository.js";
 import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import { safeMultiline, safeSingleLine } from "../text.js";
-import { border, delegateHitRegion, frame, gitBorder, ownerBadge, progressName, recordId, rule, todoIcon } from "./panel.js";
-const CHROME_LINES = 8;
+import { formatTime, taskTime, workTime } from "../time.js";
+import { border, delegateHitRegion, frame, gitBorder, metricsColumn, metricsHeader, ownerBadge, progressName, recordId, rule, todoIcon } from "./panel.js";
+const CHROME_LINES = 9;
 export class WorksDashboard {
     tui;
     theme;
@@ -78,13 +79,13 @@ export class WorksDashboard {
         const listHeight = Math.max(0, bodyHeight - details.length);
         if (listHeight > 0)
             this.keepSelectionVisible(items, listHeight);
-        const rows = items.slice(this.scrollOffset, this.scrollOffset + listHeight).map((item, index) => this.renderRow(item, innerWidth, 4 + index));
+        const rows = items.slice(this.scrollOffset, this.scrollOffset + listHeight).map((item, index) => this.renderRow(item, innerWidth, 5 + index));
         while (rows.length < listHeight)
             rows.push("");
         const selected = items.find((item) => item.key === this.selectedKey);
         if (selected?.kind === "todo" && details[1] !== undefined) {
             const start = visibleWidth(`${recordId(selected.todo.taskId, this.theme)} `);
-            const hit = delegateHitRegion(delegateLink(selected.todo.taskInfo), start, details[1], 5 + listHeight);
+            const hit = delegateHitRegion(delegateLink(selected.todo.taskInfo), start, details[1], 6 + listHeight);
             if (hit)
                 this.delegateHits.push(hit);
         }
@@ -93,6 +94,7 @@ export class WorksDashboard {
             frame(header, innerWidth, this.theme),
             frame(this.theme.fg("dim", summary), innerWidth, this.theme),
             rule(innerWidth, this.theme),
+            frame(metricsHeader(innerWidth, this.theme), innerWidth, this.theme),
             ...[...rows, ...details].map((line) => frame(line, innerWidth, this.theme)),
             rule(innerWidth, this.theme),
             frame(this.theme.fg(this.messageColor, truncateToWidth(this.message, innerWidth, "")), innerWidth, this.theme),
@@ -235,12 +237,12 @@ export class WorksDashboard {
         if (item.kind === "work") {
             const done = item.work.tasks.filter((todo) => todo.status === "completed").length;
             const metadata = this.theme.fg("dim", `${done}/${item.work.tasks.length} completed`);
-            const nameWidth = width - visibleWidth(prefix) - 1 - visibleWidth(metadata);
-            return truncateToWidth(`${prefix}${this.theme.bold(progressName(item.work.workName, workCompletion(item.work), nameWidth, `${recordId(item.work.workId, this.theme)} `))} ${metadata}`, width, "");
+            const label = `${prefix}${this.theme.bold(`${recordId(item.work.workId, this.theme)} ${safeSingleLine(item.work.workName)}`)} ${metadata}`;
+            return metricsColumn(label, workCompletion(item.work), workTime(item.work), item.work.tasks.some((todo) => todo.workingSince !== undefined), width, this.theme);
         }
         const metadata = this.theme.fg("dim", item.todo.status);
-        const nameWidth = width - visibleWidth(prefix) - 5 - visibleWidth(metadata);
-        const line = truncateToWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${progressName(item.todo.taskName, taskCompletion(item.todo), nameWidth, `${recordId(item.todo.taskId, this.theme)} ${ownerBadge(item.todo.taskInfo, this.theme, Boolean(delegateLink(item.todo.taskInfo)))} `)} ${metadata}`, width, "");
+        const label = `${prefix}  ${todoIcon(item.todo.status, this.theme)} ${recordId(item.todo.taskId, this.theme)} ${ownerBadge(item.todo.taskInfo, this.theme, Boolean(delegateLink(item.todo.taskInfo)))} ${safeSingleLine(item.todo.taskName)} ${metadata}`;
+        const line = metricsColumn(label, taskCompletion(item.todo), taskTime(item.todo), item.todo.workingSince !== undefined, width, this.theme);
         const start = visibleWidth(`${prefix}  ${todoIcon(item.todo.status, this.theme)} ${recordId(item.todo.taskId, this.theme)} `);
         const hit = delegateHitRegion(delegateLink(item.todo.taskInfo), start, line, y);
         if (hit)
@@ -283,6 +285,7 @@ export class WorksDashboard {
         return [
             this.theme.fg("accent", this.theme.bold(`DETAILS${position}`)),
             truncateToWidth(heading, width, ""),
+            this.theme.fg("dim", `Time${item.kind === "work" ? " (task effort)" : ""}: ${formatTime(item.kind === "work" ? workTime(item.work) : taskTime(item.todo))}`),
             ...shown,
         ].slice(0, budget);
     }

@@ -4,6 +4,7 @@ import type { GitSnapshot, GitStatusCache } from "../git-status.js";
 import type { TaskState } from "../state.js";
 import type { TodoStatus } from "../types.js";
 export type TasksPanelMode = "floating" | "widget" | "off";
+export declare function metricsContentWidth(width: number): number;
 export declare class TasksPanelHost {
     private readonly state;
     private readonly git;
@@ -35,6 +36,8 @@ export type DelegateHitRegion = {
 };
 export declare function delegateHitRegion(link: DelegateLink | undefined, start: number, line: string, y: number, leftPad?: number): DelegateHitRegion | undefined;
 export declare function progressName(name: string, completion: number | null, width: number, prefix?: string): string;
+export declare function metricsColumn(content: string, completion: number | null, elapsed: number | null, running: boolean, width: number, theme: Theme): string;
+export declare function metricsHeader(width: number, theme: Theme): string;
 export declare function todoIcon(status: TodoStatus, theme: Theme): string;
 export declare function frame(content: string, innerWidth: number, theme: Theme): string;
 export declare function rule(innerWidth: number, theme: Theme): string;

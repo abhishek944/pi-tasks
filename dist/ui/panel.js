@@ -7,9 +7,14 @@ import { openRepository, openSession } from "../open-repository.js";
 import { taskOwner } from "../ownership.js";
 import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import { safeSingleLine } from "../text.js";
+import { formatTime, taskTime, workTime } from "../time.js";
 const EMPTY_COMPONENT = { render: () => [], invalidate: () => { } };
 const PROGRESS_VALUE_WIDTH = 4;
-const PROGRESS_COLUMN_WIDTH = PROGRESS_VALUE_WIDTH + 3;
+const TIME_VALUE_WIDTH = 8;
+const METRICS_COLUMN_WIDTH = PROGRESS_VALUE_WIDTH + TIME_VALUE_WIDTH + 6;
+export function metricsContentWidth(width) {
+    return Math.max(0, width - METRICS_COLUMN_WIDTH);
+}
 export class TasksPanelHost {
     state;
     git;
@@ -79,7 +84,7 @@ export class TasksPanelHost {
             this.handle = tui.showOverlay(this.panel, {
                 anchor: "top-right",
                 width: "42%",
-                minWidth: 38,
+                minWidth: 48,
                 maxHeight: "48%",
                 margin: { top: 1, right: 1 },
                 nonCapturing: true,
@@ -123,6 +128,7 @@ class TasksPanel {
     delegateHits = [];
     disposed = false;
     unsubscribeGit;
+    refreshTimer;
     copyHitRegion;
     openHitRegion;
     sessionHitRegion;
@@ -142,11 +148,11 @@ class TasksPanel {
     render(width) {
         this.delegateHits = [];
         if (this.placement === "widget")
-            this.setVisible(width >= 38);
-        if (width < 38)
+            this.setVisible(width >= 48);
+        if (width < 48)
             return [];
         const works = this.state.listWorks();
-        const boxWidth = this.placement === "floating" ? width : Math.min(54, Math.max(38, Math.floor(width * 0.44)));
+        const boxWidth = this.placement === "floating" ? width : Math.min(54, Math.max(48, Math.floor(width * 0.44)));
         const innerWidth = boxWidth - 2;
         const leftPad = this.placement === "widget" ? " ".repeat(Math.max(0, width - boxWidth)) : "";
         if (this.minimized) {
@@ -157,26 +163,26 @@ class TasksPanel {
                 border(innerWidth, "bottom", this.theme),
             ].map((line) => `${leftPad}${line}`);
         }
-        const contentWidth = innerWidth - PROGRESS_COLUMN_WIDTH;
+        const contentWidth = metricsContentWidth(innerWidth);
         const content = [];
         const delegateRows = new Map();
         if (works.length === 0)
-            content.push(progressColumn(this.theme.fg("muted", "No works yet."), null, innerWidth, this.theme));
+            content.push(metricsColumn(this.theme.fg("muted", "No works yet."), null, null, false, innerWidth, this.theme));
         for (const work of works) {
             const completed = work.tasks.filter((todo) => todo.status === "completed").length;
             const summary = workSummaryLine(work.workName, `${completed}/${work.tasks.length}`, contentWidth, this.theme, work.workId);
-            content.push(progressColumn(summary, workCompletion(work), innerWidth, this.theme));
+            content.push(metricsColumn(summary, workCompletion(work), workTime(work), work.tasks.some((todo) => todo.workingSince !== undefined), innerWidth, this.theme));
             for (const todo of work.tasks) {
                 const agent = delegateLink(todo.taskInfo);
                 const lead = `  ${todoIcon(todo.status, this.theme)} ${recordId(todo.taskId, this.theme)} `;
                 const label = `${lead}${ownerBadge(todo.taskInfo, this.theme, Boolean(agent))} ${this.theme.fg(todo.status === "completed" ? "muted" : "text", safeSingleLine(todo.taskName))}`;
                 delegateRows.set(content.length, { agent, start: visibleWidth(lead) });
-                content.push(progressColumn(label, taskCompletion(todo), innerWidth, this.theme));
+                content.push(metricsColumn(label, taskCompletion(todo), taskTime(todo), todo.workingSince !== undefined, innerWidth, this.theme));
             }
         }
         this.contentLength = content.length;
         const terminalRows = this.tui.terminal.rows || process.stdout.rows || 30;
-        this.pageSize = this.placement === "widget" ? Math.max(1, content.length) : Math.max(1, Math.floor(terminalRows * 0.48) - 4);
+        this.pageSize = this.placement === "widget" ? Math.max(1, content.length) : Math.max(1, Math.floor(terminalRows * 0.48) - 5);
         if (this.placement === "widget") {
             this.scrollOffset = 0;
             this.followTail = true;
@@ -192,7 +198,7 @@ class TasksPanel {
             const row = delegateRows.get(this.scrollOffset + index);
             if (!row)
                 return;
-            const hit = delegateHitRegion(row.agent, row.start, line, 3 + index, leftPad.length);
+            const hit = delegateHitRegion(row.agent, row.start, line, 4 + index, leftPad.length);
             if (hit)
                 this.delegateHits.push(hit);
         });
@@ -205,9 +211,10 @@ class TasksPanel {
         const lines = [
             gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
             frame(header, innerWidth, this.theme),
-            this.theme.fg("border", `├${"─".repeat(contentWidth + 1)}┬${"─".repeat(PROGRESS_VALUE_WIDTH + 1)}┤`),
+            metricsRule(innerWidth, "middle", this.theme),
+            frame(metricsHeader(innerWidth, this.theme), innerWidth, this.theme),
             ...shown.map((line) => frame(line, innerWidth, this.theme)),
-            this.theme.fg("border", `└${"─".repeat(contentWidth + 1)}┴${"─".repeat(PROGRESS_VALUE_WIDTH + 1)}┘`),
+            metricsRule(innerWidth, "bottom", this.theme),
         ];
         return lines.map((line) => `${leftPad}${line}`);
     }
@@ -265,10 +272,17 @@ class TasksPanel {
             return;
         if (visible) {
             this.unsubscribeGit ??= this.git.subscribe(() => this.tui.requestRender());
+            this.refreshTimer ??= setInterval(() => {
+                if (!this.minimized && this.state.listTodos().some((todo) => todo.workingSince !== undefined))
+                    this.tui.requestRender();
+            }, 1_000);
+            this.refreshTimer.unref?.();
         }
         else {
             this.unsubscribeGit?.();
             this.unsubscribeGit = undefined;
+            clearInterval(this.refreshTimer);
+            this.refreshTimer = undefined;
         }
     }
     setMinimized(minimized) {
@@ -406,12 +420,24 @@ export function progressName(name, completion, width, prefix = "") {
     const suffix = ` · ${formatCompletion(completion)}`;
     return `${truncateToWidth(`${prefix}${safeSingleLine(name)}`, Math.max(0, width - visibleWidth(suffix)), "…")}${suffix}`;
 }
-function progressColumn(content, completion, width, theme) {
-    const contentWidth = width - PROGRESS_COLUMN_WIDTH;
+export function metricsColumn(content, completion, elapsed, running, width, theme) {
+    const value = theme.fg(completion === null ? "muted" : "accent", formatCompletion(completion).padStart(PROGRESS_VALUE_WIDTH));
+    const time = truncateToWidth(`${running ? "▶" : ""}${formatTime(elapsed)}`, TIME_VALUE_WIDTH, "…");
+    return metricsRow(content, value, theme.fg(running ? "accent" : elapsed === null ? "muted" : "dim", time.padStart(TIME_VALUE_WIDTH)), width, theme);
+}
+export function metricsHeader(width, theme) {
+    return metricsRow(theme.fg("dim", "Task / Work"), theme.fg("dim", "Done"), theme.fg("dim", "Time".padStart(TIME_VALUE_WIDTH)), width, theme);
+}
+function metricsRow(content, completion, time, width, theme) {
+    const contentWidth = metricsContentWidth(width);
     const left = truncateToWidth(content, contentWidth, "…");
     const padding = " ".repeat(Math.max(0, contentWidth - visibleWidth(left)));
-    const value = theme.fg(completion === null ? "muted" : "accent", formatCompletion(completion).padStart(PROGRESS_VALUE_WIDTH));
-    return `${left}${padding}${theme.fg("border", " │ ")}${value}`;
+    const separator = theme.fg("border", " │ ");
+    return truncateToWidth(`${left}${padding}${separator}${completion}${separator}${time}`, width, "");
+}
+function metricsRule(width, edge, theme) {
+    const contentWidth = metricsContentWidth(width);
+    return theme.fg("border", `${edge === "middle" ? "├" : "└"}${"─".repeat(contentWidth + 1)}${edge === "middle" ? "┬" : "┴"}${"─".repeat(PROGRESS_VALUE_WIDTH + 2)}${edge === "middle" ? "┬" : "┴"}${"─".repeat(TIME_VALUE_WIDTH + 1)}${edge === "middle" ? "┤" : "┘"}`);
 }
 function workSummaryLine(name, count, width, theme, workId) {
     const right = theme.fg("dim", count);

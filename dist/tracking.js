@@ -20,7 +20,7 @@ Before implementation, investigation, or any other requested work:
 1. Use WorkList and TodoList to find the relevant existing records and avoid duplicates.
 2. If no suitable work exists, create one with WorkCreate. Otherwise use WorkUpdate when its scope or shared context needs refreshing.
 3. Create or update the work's todos so they match the requested scope. Works have no status. New todos default to active; task statuses are active, blocked, completed, and cancelled. Keep taskInfo detailed and self-contained.
-4. Mark the todo being attempted active with TodoUpdate before doing that work.
+4. Mark the todo being attempted active with TodoUpdate before doing that work. For an owner: self task, include working=true to select it for automatic time measurement on every fresh run. Only one local task can be timed; selecting another pauses the previous one. Use working=false when pausing without changing status. Idle, blocking user prompts, and terminal statuses pause automatically. Delegated agents time their own local tasks; a parent delegate record is not a running local task. Never estimate or submit durations.
 5. completionPercent on TodoCreate/TodoUpdate is optional. When estimating, use an approximate integer from 0 to 100 based on actual work and verification, not elapsed time or a fixed mapping from status. Use 0 for genuinely unstarted tasks and null when unknown. Never invent progress to make a work look further along.
 
 During and after the attempt:

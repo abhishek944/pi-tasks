@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0 - 2026-10-23
+
+- Add measured active task time using `TodoUpdate working=true|false`, timestamp-based accumulated intervals, and automatic pauses for task switches, idle periods, blocking user prompts, aborts, and task lifecycle changes. Saved totals follow the session branch and restore paused without counting offline time.
+- Show compact, aligned Done and Time columns in the panel and `/works`, with a running marker and shared durations in lists, details, and copied Markdown. Keep task names readable with a 48-column compact minimum and a slim eight-column Time value.
+- Sum task effort for Work time, including cancelled tasks, while preserving unknown historical and parent-delegate durations. Each delegated agent measures its own local tasks; remote timing is not aggregated into parent records.
+
 ## 0.11.1 - 2026-10-22
 
 - Show live, colored task-state counts before Copy in floating, widget, and minimized panel headers; omit zero counts and preserve narrow-width controls.

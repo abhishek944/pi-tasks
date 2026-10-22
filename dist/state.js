@@ -1,3 +1,4 @@
+import { taskOwner } from "./ownership.js";
 import { taskCompletion } from "./progress.js";
 import { safeSingleLine } from "./text.js";
 export const TASK_ENTRY_TYPE = "pi-tasks-state";
@@ -10,11 +11,18 @@ export class TaskState {
     todos = new Map();
     nextWorkId = 1;
     nextTaskId = 1;
+    focusedTaskId;
+    workingSince;
+    agentRunning = false;
     constructor(pi, onChange) {
         this.pi = pi;
         this.onChange = onChange;
     }
     restore(ctx) {
+        // The branch has already changed. Never append the old interval to it.
+        this.focusedTaskId = undefined;
+        this.workingSince = undefined;
+        this.agentRunning = false;
         this.works.clear();
         this.todos.clear();
         this.nextWorkId = 1;
@@ -44,7 +52,7 @@ export class TaskState {
             .filter((todo) => !filter?.workId || todo.workId === filter.workId)
             .filter((todo) => !filter?.status || todo.status === filter.status)
             .sort((left, right) => left.createdAt - right.createdAt)
-            .map((todo) => ({ ...todo }));
+            .map((todo) => this.snapshot(todo));
     }
     getWork(workId) {
         const work = this.works.get(workId);
@@ -52,7 +60,60 @@ export class TaskState {
     }
     getTodo(taskId) {
         const todo = this.todos.get(taskId);
-        return todo ? { ...todo } : undefined;
+        return todo ? this.snapshot(todo) : undefined;
+    }
+    snapshot(todo) {
+        return { ...todo, workingSince: todo.taskId === this.focusedTaskId ? this.workingSince : undefined };
+    }
+    /** Gate the selected task on actual agent execution, not task status. */
+    setAgentRunning(running) {
+        if (this.agentRunning === running)
+            return;
+        if (!running)
+            this.saveInterval();
+        this.agentRunning = running;
+        if (running && this.focusedTaskId)
+            this.workingSince = Date.now();
+        this.onChange();
+    }
+    setWorking(taskId, working) {
+        const todo = this.todos.get(taskId);
+        if (!todo)
+            throw new Error(`Todo ${taskId} not found.`);
+        if (!working) {
+            if (this.focusedTaskId === taskId)
+                this.clearWorking();
+            return;
+        }
+        if (todo.status !== "active" || taskOwner(todo.taskInfo) !== "self") {
+            throw new Error("working=true requires an active task with owner: self in this session.");
+        }
+        if (this.focusedTaskId === taskId)
+            return;
+        this.clearWorking();
+        if (todo.elapsedMs === undefined || todo.elapsedMs === null) {
+            this.record({ version: 1, type: "todo-time", at: Date.now(), taskId, elapsedMs: 0 });
+        }
+        this.focusedTaskId = taskId;
+        if (this.agentRunning)
+            this.workingSince = Date.now();
+        this.onChange();
+    }
+    clearWorking() {
+        this.saveInterval();
+        this.focusedTaskId = undefined;
+        this.onChange();
+    }
+    saveInterval() {
+        if (!this.focusedTaskId || this.workingSince === undefined)
+            return;
+        const todo = this.todos.get(this.focusedTaskId);
+        const now = Date.now();
+        if (todo) {
+            this.record({ version: 1, type: "todo-time", at: now, taskId: todo.taskId,
+                elapsedMs: (todo.elapsedMs ?? 0) + Math.max(0, now - this.workingSince) });
+        }
+        this.workingSince = undefined;
     }
     createWork(workName, workInfo) {
         if (this.works.size >= MAX_WORKS)
@@ -83,6 +144,8 @@ export class TaskState {
     deleteWork(workId) {
         if (!this.works.has(workId))
             return false;
+        if (this.focusedTaskId && this.todos.get(this.focusedTaskId)?.workId === workId)
+            this.clearWorking();
         this.record({ version: 1, type: "work-deleted", at: Date.now(), workId });
         return true;
     }
@@ -100,6 +163,7 @@ export class TaskState {
             taskInfo: requiredText(taskInfo, "taskInfo"),
             status,
             completionPercent: status === "completed" ? 100 : completionPercent ?? null,
+            elapsedMs: 0,
             createdAt: now,
             updatedAt: now,
         };
@@ -117,14 +181,25 @@ export class TaskState {
             status: patch.status,
             completionPercent: patch.completionPercent,
         });
-        if (Object.keys(normalized).length === 0)
+        if (Object.keys(normalized).length === 0 && patch.working === undefined)
             throw new Error("TodoUpdate requires at least one changed field.");
-        this.record({ version: 1, type: "todo-updated", at: Date.now(), taskId, patch: normalized });
+        const effective = { ...current, ...normalized };
+        const canWork = effective.status === "active" && taskOwner(effective.taskInfo) === "self";
+        if (patch.working === true && !canWork)
+            throw new Error("working=true requires an active task with owner: self in this session.");
+        if (this.focusedTaskId === taskId && (!canWork || patch.working === false))
+            this.clearWorking();
+        if (Object.keys(normalized).length > 0)
+            this.record({ version: 1, type: "todo-updated", at: Date.now(), taskId, patch: normalized });
+        if (patch.working !== undefined)
+            this.setWorking(taskId, patch.working);
         return this.getTodo(taskId);
     }
     deleteTodo(taskId) {
         if (!this.todos.has(taskId))
             return false;
+        if (this.focusedTaskId === taskId)
+            this.clearWorking();
         this.record({ version: 1, type: "todo-deleted", at: Date.now(), taskId });
         return true;
     }
@@ -178,6 +253,8 @@ export class TaskState {
                         status,
                         taskName: safeSingleLine(event.todo.taskName),
                         completionPercent: taskCompletion(event.todo),
+                        elapsedMs: validElapsed(event.todo.elapsedMs) ? event.todo.elapsedMs : null,
+                        workingSince: undefined,
                     });
                 this.nextTaskId = Math.max(this.nextTaskId, numericId(event.todo.taskId) + 1);
                 break;
@@ -198,11 +275,20 @@ export class TaskState {
                 }
                 break;
             }
+            case "todo-time": {
+                const todo = this.todos.get(event.taskId);
+                if (todo && validElapsed(event.elapsedMs))
+                    this.todos.set(event.taskId, { ...todo, elapsedMs: event.elapsedMs });
+                break;
+            }
             case "todo-deleted":
                 this.todos.delete(event.taskId);
                 break;
         }
     }
+}
+function validElapsed(value) {
+    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 function validateCompletion(status, value) {
     if (value === undefined || value === null)
@@ -252,7 +338,7 @@ function parseEvent(value) {
     const candidate = value;
     if (candidate.version !== 1 || typeof candidate.type !== "string")
         return undefined;
-    if (!["work-created", "work-updated", "work-deleted", "todo-created", "todo-updated", "todo-deleted"].includes(candidate.type))
+    if (!["work-created", "work-updated", "work-deleted", "todo-created", "todo-updated", "todo-deleted", "todo-time"].includes(candidate.type))
         return undefined;
     return value;
 }

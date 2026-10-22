@@ -3,7 +3,9 @@ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "
 import { Type } from "typebox";
 import { preservePaneLink } from "./agents/links.js";
 import { formatCompletion, taskCompletion, workCompletion } from "./progress.js";
+import { formatTime, taskTime, workTime } from "./time.js";
 import { renderTaskCall, renderTaskResult, taskResult } from "./tool-result.js";
+import { areTrackingToolsActive } from "./tracking.js";
 const StatusSchema = StringEnum(["active", "blocked", "completed", "cancelled"]);
 const STATUS_GUIDANCE = "New tasks default to active. Use blocked immediately when the next step must wait for agent output, review, an external response, user input, permission, or another obstacle. Record the dependency and resume condition in taskInfo and retain progress. Return blocked tasks to active when the dependency resolves and work resumes. Works are collections and have no status.";
 const CompletionSchema = Type.Union([Type.Integer({ minimum: 0, maximum: 100 }), Type.Null()], {
@@ -131,20 +133,23 @@ export function registerTaskTools(pi, state) {
     pi.registerTool({
         name: "TodoUpdate",
         label: "TodoUpdate",
-        description: `Update a todo's name, detailed information, status, or completionPercent. For longer tasks, include an optional completionPercent estimate after roughly 5–10 meaningful working steps or a milestone, not just at completion or in status-only updates. Explain evidence and remaining work in taskInfo; use null when unknown and never increase a percentage without evidence. Blocking retains progress. Reserve completed/100 for verified completion. ${STATUS_GUIDANCE} ${DETAILS_GUIDANCE}`,
+        description: `Update a todo's name, detailed information, status, completionPercent, or working selection. Set working=true immediately before working on an active owner: self task; it pauses any previously selected task. Set working=false to pause without changing status. Timing is calculated automatically, never estimated. Re-select with working=true on each fresh run. Delegated agents time their own local tasks; never select a parent delegate task. For longer tasks, include an optional completionPercent estimate after roughly 5–10 meaningful working steps or a milestone, not just at completion or in status-only updates. Explain evidence and remaining work in taskInfo; use null when unknown and never increase a percentage without evidence. Blocking retains progress. Reserve completed/100 for verified completion. ${STATUS_GUIDANCE} ${DETAILS_GUIDANCE}`,
         promptSnippet: "Keep todo status and detailed context synchronized with active work",
-        promptGuidelines: ["Use TodoUpdate immediately before and after working on a todo in the main conversation; never update tracking during /ask or /btw.", "During longer tasks, include an evidence-based completionPercent estimate after roughly 5–10 meaningful working steps or a milestone; do not wait until completion or only update status. Estimates remain optional: use null when unknown, and leave a percentage unchanged if there is no new evidence. Explain evidence and remaining work in taskInfo; only verified completed tasks may reach 100. Work completion is calculated automatically from tasks.", DETAILS_GUIDANCE],
+        promptGuidelines: ["Use TodoUpdate with working=true immediately before working on an active owner: self task, including when resuming on a fresh run. Use working=false when pausing without a status change. Only one local task is timed; runtime idle and user waits pause automatically. Never update tracking during /ask or /btw.", "During longer tasks, include an evidence-based completionPercent estimate after roughly 5–10 meaningful working steps or a milestone; do not wait until completion or only update status. Estimates remain optional: use null when unknown, and leave a percentage unchanged if there is no new evidence. Explain evidence and remaining work in taskInfo; only verified completed tasks may reach 100. Work completion is calculated automatically from tasks.", DETAILS_GUIDANCE],
         parameters: Type.Object({
             taskId: Type.String(),
             taskName: Type.Optional(NameSchema),
             taskInfo: Type.Optional(InfoSchema),
             status: Type.Optional(StatusSchema),
             completionPercent: Type.Optional(CompletionSchema),
+            working: Type.Optional(Type.Boolean({ description: "Select this active owner: self task for automatic timing, or pause it. Selection switches away from the previously timed task. No timestamps or duration estimates are accepted." })),
         }, { additionalProperties: false, minProperties: 2 }),
         execute(_id, params) {
+            if (params.working !== undefined && !areTrackingToolsActive(pi))
+                throw new Error("Task timing is available only in tracked main-conversation work, not /ask or /btw.");
             const taskInfo = params.taskInfo === undefined ? undefined : preservePaneLink(state.getTodo(params.taskId)?.taskInfo ?? "", params.taskInfo);
-            const todo = state.updateTodo(params.taskId, { taskName: params.taskName, taskInfo, status: params.status, completionPercent: params.completionPercent });
-            return Promise.resolve(taskResult(`Updated todo ${todo.taskId}: ${todo.taskName} · ${formatCompletion(taskCompletion(todo))} [${todo.status}]`, "todo-update", { taskId: todo.taskId, workId: todo.workId, completionPercent: taskCompletion(todo) }));
+            const todo = state.updateTodo(params.taskId, { taskName: params.taskName, taskInfo, status: params.status, completionPercent: params.completionPercent, working: params.working });
+            return Promise.resolve(taskResult(`Updated todo ${todo.taskId}: ${todo.taskName} · ${formatCompletion(taskCompletion(todo))} · ${formatTime(taskTime(todo))}${todo.workingSince === undefined ? "" : " running"} [${todo.status}]`, "todo-update", { taskId: todo.taskId, workId: todo.workId, completionPercent: taskCompletion(todo), elapsedMs: taskTime(todo), working: todo.workingSince !== undefined }));
         },
         renderCall: renderTaskCall("TodoUpdate"),
         renderResult: renderTaskResult,
@@ -169,7 +174,7 @@ function formatWorks(works) {
     if (works.length === 0)
         return "No works found in this session.";
     return works.map((work) => [
-        `${work.workId} ${work.workName} · ${formatCompletion(workCompletion(work))}`,
+        `${work.workId} ${work.workName} · ${formatCompletion(workCompletion(work))} · Time: ${formatTime(workTime(work))}`,
         `Work info:\n${work.workInfo}`,
         work.tasks.length ? `Todos:\n${formatTodos(work.tasks)}` : "Todos: none",
     ].join("\n")).join("\n\n---\n\n");
@@ -177,7 +182,7 @@ function formatWorks(works) {
 function formatTodos(todos) {
     if (todos.length === 0)
         return "No todos found.";
-    return todos.map((todo) => `${todo.taskId} [${todo.status}] ${todo.taskName} · ${formatCompletion(taskCompletion(todo))}\nWork: ${todo.workId}\nTask info:\n${todo.taskInfo}`).join("\n\n");
+    return todos.map((todo) => `${todo.taskId} [${todo.status}] ${todo.taskName} · ${formatCompletion(taskCompletion(todo))} · Time: ${formatTime(taskTime(todo))}${todo.workingSince === undefined ? "" : " (running)"}\nWork: ${todo.workId}\nTask info:\n${todo.taskInfo}`).join("\n\n");
 }
 function bounded(text) {
     const result = truncateHead(text, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });

@@ -6,6 +6,7 @@ import { GitStatusCache } from "./git-status.js";
 import { openRepository, openSession } from "./open-repository.js";
 import { TaskState } from "./state.js";
 import { safeSingleLine } from "./text.js";
+import { registerTaskTiming } from "./timing.js";
 import { registerTaskTools } from "./tools.js";
 import { registerTrackingGuidance } from "./tracking.js";
 import { TasksPanelHost } from "./ui/panel.js";
@@ -15,6 +16,7 @@ export default function tasksExtension(pi) {
     const git = new GitStatusCache();
     panel = new TasksPanelHost(state, git);
     registerTaskTools(pi, state);
+    registerTaskTiming(pi, state);
     registerAgentTools(pi, state);
     registerTrackingGuidance(pi);
     registerTaskAutoContinue(pi, state);

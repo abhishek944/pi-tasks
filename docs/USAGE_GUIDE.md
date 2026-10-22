@@ -7,7 +7,7 @@ For every normal request that starts or continues work, Pi should:
 1. Find existing work and todos.
 2. Create the relevant Work collection, or refresh its shared context when needed.
 3. Create or update detailed todos for the requested scope.
-4. Mark the current todo active before starting it.
+4. Mark the current todo active before starting it. For an `owner: self` task, include `working=true` to select it for automatic timing; re-select at the start of each fresh run.
 5. During longer tasks, report interim progress after roughly 5–10 meaningful working steps or a milestone, when an estimate is possible.
 6. Mark the todo blocked immediately if its next step must wait on a dependency; otherwise update it after the attempt as active, completed, or cancelled.
 7. Keep status on tasks only; update Work context when scope or shared decisions change.
@@ -107,6 +107,20 @@ TodoDelete taskId="T1"
 
 `TodoList` returns all matching todos when `limit` is omitted. A positive integer `limit` selects the newest matching todos after filters, displayed oldest-to-newest. The result shows how many todos were returned and how many matched in total. Both list tools can still truncate very long text output at 50KB or 2,000 lines.
 
+### Active task time
+
+```text
+TodoUpdate taskId="T1" status="active" working=true
+TodoUpdate taskId="T2" working=true
+TodoUpdate taskId="T2" working=false
+```
+
+The first call selects T1; the second pauses T1 and selects T2; the third pauses T2 without changing its status. `working=true` requires an active task with `owner: self` in its details. Creation and active status alone do not start timing. The model selects the task, but never submits timestamps or estimates of duration.
+
+Time is saved total milliseconds plus `Date.now() - workingSince` while running. The extension saves each interval when paused, switched, or finished, not on every one-second display refresh. Thinking and foreground tool execution count. Idle periods, retry delays between agent loops, and blocking extension UI prompts pause timing. Blocking, completion, cancellation, changing away from self ownership, abort, and shutdown close the interval. Select again at the beginning of each new run. A restored session or branch always starts paused and excludes offline time. Abrupt process termination can lose the unsaved current interval; there is no background checkpoint writer. Blocking prompt exclusion requires a Pi host emitting `ui_prompt_start` and `ui_prompt_end`; older hosts retain loop-boundary timing.
+
+The compact panel and `/works` show reserved Done and Time columns; `▶` beside a duration means it is running. New tasks show `0s`. Legacy tasks without timing show `—`; selecting one begins measurement from now, not from its creation date. Work time sums task effort, including cancelled tasks; any unknown duration makes its total unknown. This is not elapsed wall-clock time and does not predict completion. Each delegated agent times its own local self tasks; parent delegate records show `—` because remote time is unmeasured, making the Work total unknown rather than a misleading local-only subtotal. List tools and copied Markdown include durations too.
+
 ### Completion percentages
 
 During longer tasks, Pi should include a `completionPercent` estimate in `TodoUpdate` after roughly 5–10 meaningful working steps or a milestone, rather than waiting until completion or only updating status. Explain the evidence and remaining work in `taskInfo`. Estimates remain optional: use `null` when unknown, and leave a percentage unchanged if there is no new evidence. This is model-facing guidance, not an enforced schedule or an automatic percentage increase. These are approximate AI-reported values, not a fixed percentage for each status and not a time prediction. Use an integer 0–100 or `null` for unknown. Completed status means verified completion and displays 100%; 100 without completed status is rejected. Partial progress requires reopening a completed task; reopening without a fresh estimate makes it unknown. Blocking retains the current estimate.
@@ -173,7 +187,7 @@ Navigation directly focuses the linked paneId through Herdr. Closed panes, missi
 
 The compact panel no longer displays the session ID. Before Copy, its header shows nonzero task-state counts across all Works: `3!` blocked, `2▶` active, `5✓` completed, and `1×` cancelled, using the same icon colors as task rows. Counts update in floating, widget and minimized layouts; narrow headers shorten the toggle and truncate the summary when needed. Its underlined `[Open session]` action sits immediately after Copy in floating, widget and minimized layouts. It opens this agent's existing artifact directory under repository `var/` in Cursor, including a nested delegated session folder. If no folder exists, it creates `var/<full-sessionId>/`; multiple matching folders report an ambiguity rather than guessing. Session identity comes from Pi's context, not a pane name. Folder resolution and Cursor launch happen only on activation, never during rendering. `/works-panel open-session` is the keyboard-command alternative. The existing Open action still opens the repository. Narrow compact headers use `[-]`/`[+]` for Minimize/Maximize so all actions fit. The `/works` dashboard retains its existing title and controls.
 
-The panel defaults to a floating top-right layout and does not take keyboard focus. A slim, separated right-hand column keeps work and task percentages aligned and visible even when names are long; the left side retains names, task status icons and Work task-counts. Work rows have no status icons. It hides on small terminals. The top border centers repository-wide Git status: `git main · S2 U3 ?1` means two staged files, three unstaged files, and one untracked file; a file with both staged and unstaged edits counts in both. A clean repository shows `git main · clean`. Long branches shorten before counts. Detached HEAD shows `@` plus the short commit. Git remains visible while minimized and adds no content row.
+The panel defaults to a floating top-right layout and does not take keyboard focus. Its minimum box width is 48 columns to leave room for names beside both metrics; the widget hides below 48 columns. Separated right-hand Done and Time columns keep work/task percentages and measured durations aligned and visible even when names are long; the left side retains names, task status icons and Work task-counts. Work rows have no status icons. It hides on small terminals. The top border centers repository-wide Git status: `git main · S2 U3 ?1` means two staged files, three unstaged files, and one untracked file; a file with both staged and unstaged edits counts in both. A clean repository shows `git main · clean`. Long branches shorten before counts. Detached HEAD shows `@` plus the short commit. Git remains visible while minimized and adds no content row.
 
 The asynchronous Git cache refreshes every second while a view is attached; file-changing tool results expire it sooner without blanking the last snapshot. Initial reads show `git loading…`; outside Git the border is plain, and initial failures show `git unavailable`. Later refresh failures retain the last snapshot until a successful read. Polling is read-only and stops when both the panel and dashboard are closed/off.
 

@@ -20,7 +20,7 @@ Limits:
 
 A work contains `workId`, `workName`, `workInfo`, `createdAt`, and `updatedAt`. It is a collection with no stored or derived lifecycle status. Work tools do not accept status, and WorkList has no status filter. The public WorkStatus type is removed; consumers should use TodoStatus for task lifecycle.
 
-A todo contains `taskId`, `workId`, `taskName`, `taskInfo`, `status`, optional `completionPercent`, `createdAt`, and `updatedAt`. Todo status is `active`, `blocked`, `completed`, or `cancelled`; new todos default to `active`.
+A todo contains `taskId`, `workId`, `taskName`, `taskInfo`, `status`, optional `completionPercent`, optional `elapsedMs`, runtime-only optional `workingSince`, `createdAt`, and `updatedAt`. Todo status is `active`, `blocked`, `completed`, or `cancelled`; new todos default to `active`.
 
 The public list shape assembles each work with `tasks: Todo[]`; tasks are stored separately to avoid duplicate state. Work progress is derived, not independently stored or editable.
 
@@ -38,7 +38,19 @@ Replay accepts version-1 Work events with or without status, ignores retired Wor
 - Any unknown eligible task makes the work unknown (`—`); unknown is not silently 0. With no eligible tasks (empty Work or only cancelled tasks), work is unknown.
 - Work progress reaches 100 only when all eligible tasks are completed; there is no parent status override. Progress never changes task statuses or auto-continuation eligibility.
 - Optional progress fields are additive to version-1 branch events. Legacy completed tasks show 100%; other legacy tasks remain unknown until reported. Invalid optional progress is sanitized on replay without discarding the task.
-- Dashboard, compact panel, list output and copied Markdown share these calculations. The compact panel reserves a narrow right-hand percentage column with a divider; names truncate independently. `/works` retains inline `· N%` labels and unchanged navigation. Percentages do not predict remaining time; no subtasks, weights or separate navigation sidebar are added.
+- Dashboard, compact panel, list output and copied Markdown share these calculations. The compact panel and `/works` reserve separated Done and Time columns; names truncate independently and navigation is unchanged. Percentages do not predict remaining time; no subtasks, weights or separate navigation sidebar are added.
+
+### Measured time
+
+`TodoUpdate` accepts optional `working: boolean`, separate from status and progress. `true` selects an active `owner: self` task in this session; a missing task, non-active status, or other ownership is rejected before changing state. The selected task is exclusive per session. `false` pauses that task without changing status; it does not interrupt a different selected task. Changing status away from active, changing ownership away from self, or deleting the task/Work closes its interval. The field is an operation, not persistent task status; callers cannot provide elapsed duration or timestamps.
+
+TaskState owns focus, an agent-running gate, and an in-memory interval timestamp. Snapshot `workingSince` exists only during a running interval. Saved `elapsedMs` is a non-negative safe integer; version-1 `todo-time` custom entries save cumulative totals without altering status, completion, or the task's descriptive `updatedAt`. Replay accepts old entries and sanitizes invalid duration fields to unknown. Restored records never restore running focus or count offline time. New tasks start at zero; older records remain unknown until selected, which begins measurement from that point rather than reconstructing history. Negative intervals following a backward wall-clock change clamp to zero; forward clock corrections can affect measured time because the agreed clock is Date.now().
+
+`registerTaskTiming` gates focus with agent start/end and nested blocking user-prompt events. Every new `before_agent_start` clears prior selection; native loop continuations can retain selection until final settlement. Abort signals close the interval immediately. Settlement, shutdown, and pre-navigation boundaries close and clear selection. Tool execution and model thinking within an agent loop count; idle and native retry waits between loops do not. Hosts without blocking-prompt events cannot exclude an in-loop extension dialog, but retain loop-boundary pauses. There is no per-second persistence, heartbeat, or crash-recovery registry: forced termination may lose the uncommitted interval.
+
+`taskTime`, `workTime`, and `formatTime` supply shared display calculations. Work time sums all tasks, including cancelled tasks, because already-spent effort is real; an empty Work or any unknown task yields unknown. This differs deliberately from completion, which excludes cancelled tasks and averages rather than sums. Delegated workers measure their own session-local self tasks. Parent delegate task records display unknown and propagate unknown to Work totals; they do not import child timing or use prompt-to-completion duration as a substitute. Stored local intervals survive ownership changes but are not displayed as the full delegated duration. No cross-session task registry or parent monitor timing bridge is added.
+
+Compact floating/widget views refresh running durations once per second while visible and dispose the render timer on hide. `/works` reuses its existing refresh interval. Neither timer writes session entries. Both views reserve Done and Time columns with name clipping, a running marker, and explicit unknown duration. The compact box minimum is 48 columns so the task prefix does not consume the entire name area; widget views hide below that width. Lists, dashboard details, and copied Markdown show the same measured totals.
 
 ## Tracking behavior
 

@@ -15,6 +15,10 @@ export interface Todo {
   taskInfo: string;
   status: TodoStatus;
   completionPercent?: number | null;
+  /** Accumulated measured time; missing/null means historical time is unknown. */
+  elapsedMs?: number | null;
+  /** Current interval start, exposed only in live snapshots, never restored. */
+  workingSince?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -29,4 +33,5 @@ export type TaskEvent =
   | { version: 1; type: "work-deleted"; at: number; workId: string }
   | { version: 1; type: "todo-created"; at: number; todo: Todo }
   | { version: 1; type: "todo-updated"; at: number; taskId: string; patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status" | "completionPercent">> }
+  | { version: 1; type: "todo-time"; at: number; taskId: string; elapsedMs: number }
   | { version: 1; type: "todo-deleted"; at: number; taskId: string };

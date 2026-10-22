@@ -1,5 +1,6 @@
 import { formatCompletion, taskCompletion, workCompletion } from "./progress.js";
 import { safeMultiline, safeSingleLine } from "./text.js";
+import { formatTime, taskTime, workTime } from "./time.js";
 import type { WorkWithTodos } from "./types.js";
 
 export function formatWorksMarkdown(works: WorkWithTodos[]): string {
@@ -11,6 +12,7 @@ export function formatWorksMarkdown(works: WorkWithTodos[]): string {
       `## ${work.workId} — ${escapeMarkdownInline(safeSingleLine(work.workName))}`,
       "",
       `**Completion:** ${formatCompletion(workCompletion(work))}`,
+      `**Time (task effort):** ${formatTime(workTime(work))}`,
       "",
       "### Details",
       "",
@@ -29,6 +31,7 @@ export function formatWorksMarkdown(works: WorkWithTodos[]): string {
         "",
         `**Status:** ${todo.status}`,
         `**Completion:** ${formatCompletion(taskCompletion(todo))}`,
+        `**Time:** ${formatTime(taskTime(todo))}${todo.workingSince === undefined ? "" : " (running)"}`,
         "",
         markdownBody(todo.taskInfo),
         "",

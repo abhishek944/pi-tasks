@@ -7,7 +7,7 @@ It adds:
 - `WorkCreate`, `WorkList`, `WorkUpdate`, and `WorkDelete`
 - `TodoCreate`, `TodoList`, `TodoUpdate`, and `TodoDelete`
 - `/works`, a detailed floating dashboard modeled after `pi-loop-monitor`'s `/monitors`
-- a compact floating top-right panel with work and todo names and completion percentages
+- a compact floating top-right panel with work and todo names, completion percentages, and measured active time
 - main-conversation guidance that keeps normal requested work current across every Pi skill and requires each delegated agent to establish its own Work and Todo IDs before assigned work
 
 Works and todos follow the active Pi session branch. Forking or navigating the session tree restores the state for that branch. `/ask` and `/btw` conversations do not update works, todos, loops, or monitors.
@@ -31,6 +31,7 @@ The extension guides Pi to manage work automatically for normal requests that st
 ```text
 WorkCreate workName="Add task tracking" workInfo="Detailed goal, scope, constraints, and expected outcome"
 TodoCreate workId="W1" taskName="Implement state" taskInfo="Detailed task context and expected result" status="active"
+TodoUpdate taskId="T1" working=true
 TodoUpdate taskId="T1" completionPercent=40 taskInfo="The state changes are implemented; rendering and verification remain."
 TodoUpdate taskId="T1" status="completed" taskInfo="Implementation is complete; typecheck and build passed."
 WorkUpdate workId="W1" workInfo="Task tracking is implemented; state and UI checks passed."
@@ -41,6 +42,14 @@ Run `/works` to inspect full `workInfo` and `taskInfo` in an interactive overlay
 Works are collections with no status. Tasks use four statuses: `active` (the default), `blocked`, `completed`, and `cancelled`. Use `blocked` as soon as the next step must wait for agent output, review, an external response, user input, permission, or another obstacle. Record the dependency and resume condition in `taskInfo`; retain progress. Tasks actually executing in another agent may remain active, but dependent tasks awaiting their output are blocked. Return blocked tasks to active when the dependency resolves and work resumes. Status does not itself schedule a wake. Legacy saved task statuses `planned` and `pending` restore as active; old Work statuses are ignored. Work tools no longer accept status or a status filter. To cancel an entire Work, cancel its remaining tasks; WorkDelete still deletes the collection and its tasks.
 
 Pi reports approximate task progress through the existing `TodoCreate`/`TodoUpdate` tools using optional `completionPercent` (an integer from 0 to 100, or `null` for unknown). Work progress is the equal average of non-cancelled tasks, rounded down—not the fraction of finished tasks. For example, task values 100, 40, 0, 0 give work progress 35%. A missing estimate makes work progress unknown (`—`); blocked tasks retain their estimate. Completed tasks are 100%; reporting 100 without completed status is rejected. For longer tasks, the guidance asks Pi to include interim estimates after roughly 5–10 meaningful working steps or a milestone, rather than waiting until completion. Estimates remain optional and must be supported by evidence; this is guidance, not an enforced schedule. These percentages are estimates, not time predictions. The floating panel keeps percentages in a reserved right-hand column so long names cannot hide them. Existing keyboard controls are unchanged.
+
+### Active task time
+
+The panel and `/works` reserve **Done** and **Time** columns. Select the task you are actually working on with `TodoUpdate taskId="T1" working=true`; it must be active and have `owner: self` in its details. Selecting another task pauses the previous one. Use `working=false` to pause without changing status. Select again at the beginning of each fresh run; merely creating or marking a task active never starts its timer.
+
+The extension uses `Date.now()` to add working intervals, including thinking and foreground tools. Idle time, native retry delays between agent loops, and blocking user prompts do not count. Completion, blocking, cancellation, ownership changes, abort, and shutdown stop the timer automatically. Saved totals survive reload and branch navigation; restored tasks are paused and offline time never counts. A running time has a `▶` marker. Totals are saved on interval boundaries, not every display tick. A forced process kill can lose the current unsaved interval. Blocking prompt exclusion needs a Pi host that emits `ui_prompt_start`/`ui_prompt_end`; older hosts still pause at agent-loop boundaries.
+
+New tasks start at `0s`; historical tasks without timing show `—` until measured, with no attempt to reconstruct earlier time. Work time sums every task's measured effort, including cancelled tasks; any unknown task makes the total unknown. It is not wall-clock duration or an estimate of remaining time. Every delegated agent times its own local tasks; the parent delegate record shows `—` because remote time is unmeasured, and makes the Work total unknown. It never treats waiting as work. Listings and copied Markdown include the same totals.
 
 The panel and `/works` prefix work names with IDs and task names with IDs plus ownership, such as `[W1] Locate subagent restrictions` and `[T1] [self] Inspect the implement skill`. Task ownership comes from an explicit `owner: self` or `owner: delegate` declaration at the start of a line in `taskInfo`; preserve it on updates. Missing or conflicting decisions show `[unassigned]`, without rewriting stored names or old records. Inside Herdr, `AgentCreate` automatically links its task to an underlined, clickable `[delegate]` badge; Open actions are also underlined. See [delegate pane links](docs/USAGE_GUIDE.md#delegate-pane-links) for linking and keyboard access.
 

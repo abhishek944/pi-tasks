@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 - 2026-10-22
+
+- Show live, colored task-state counts before Copy in floating, widget, and minimized panel headers; omit zero counts and preserve narrow-width controls.
+
 ## 0.11.0 - 2026-10-22
 
 - Remove Work lifecycle status and its tool parameters, filter, and exported WorkStatus type. Tasks alone own status; automatic continuation checks active tasks across all Works on the current branch. Existing Work statuses are ignored during replay without rewriting history.

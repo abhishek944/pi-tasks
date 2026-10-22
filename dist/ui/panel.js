@@ -279,6 +279,12 @@ class TasksPanel {
         this.tui.requestRender();
     }
     renderHeader(width, leftPadWidth, suffix = "") {
+        const counts = { active: 0, blocked: 0, completed: 0, cancelled: 0 };
+        for (const todo of this.state.listTodos())
+            counts[todo.status]++;
+        const statuses = ["blocked", "active", "completed", "cancelled"];
+        const summary = statuses.filter((status) => counts[status] > 0)
+            .map((status) => `${counts[status]}${todoIcon(status, this.theme)}`).join(" ");
         const copyAction = this.copying
             ? this.theme.fg("dim", "[Copying…]")
             : this.theme.fg("accent", this.theme.bold("[Copy]"));
@@ -286,11 +292,11 @@ class TasksPanel {
         const openAction = this.theme.fg(this.opening ? "dim" : "accent", this.theme.underline(this.theme.bold("[Open]")));
         const fixedWidth = visibleWidth(copyAction) + visibleWidth(sessionAction) + visibleWidth(openAction) + 3;
         const fullToggle = this.minimized ? "[Maximize]" : "[Minimize]";
-        const toggleLabel = fixedWidth + visibleWidth(fullToggle) <= width ? fullToggle : this.minimized ? "[+]" : "[-]";
+        const toggleLabel = fixedWidth + visibleWidth(fullToggle) + visibleWidth(summary) + (summary ? 1 : 0) <= width ? fullToggle : this.minimized ? "[+]" : "[-]";
         const toggleAction = this.theme.fg("accent", this.theme.bold(toggleLabel));
         const actionsWidth = fixedWidth + visibleWidth(toggleAction);
         const titleWidth = Math.max(0, width - actionsWidth - 1);
-        const context = truncateToWidth(this.theme.fg("dim", suffix.replace(/^\s*·\s*/, "")), titleWidth, "…");
+        const context = truncateToWidth(`${summary}${this.theme.fg("dim", summary ? suffix : suffix.replace(/^\s*·\s*/, ""))}`, titleWidth, "…");
         const gap = " ".repeat(Math.max(0, width - visibleWidth(context) - actionsWidth));
         const copyStart = leftPadWidth + 1 + visibleWidth(context) + gap.length;
         this.copyHitRegion = { start: copyStart, end: copyStart + visibleWidth(copyAction) };

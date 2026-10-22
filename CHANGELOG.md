@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0 - 2026-10-22
+
+- Remove Work lifecycle status and its tool parameters, filter, and exported WorkStatus type. Tasks alone own status; automatic continuation checks active tasks across all Works on the current branch. Existing Work statuses are ignored during replay without rewriting history.
+- Remove Work status labels/icons from terminal views and Markdown; retain task counts and derived progress. Empty Works and Works with only cancelled tasks show unknown progress and do not trigger continuation.
+- New status-free Work events require an updated reader; older clients that require Work status cannot restore them correctly.
+
 ## 0.10.0 - 2026-10-21
 
 - Activate the delegate's Herdr tab explicitly after pane focus so GUI clicks switch the visible tab, not just server focus state.

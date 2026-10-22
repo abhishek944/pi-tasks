@@ -90,4 +90,4 @@ export default function tasksExtension(pi: ExtensionAPI): void {
   });
 }
 
-export type { Todo, TodoStatus, Work, WorkStatus, WorkWithTodos } from "./types.js";
+export type { Todo, TodoStatus, Work, WorkWithTodos } from "./types.js";

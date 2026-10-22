@@ -35,7 +35,6 @@ export class TaskState {
     listWorks(filter) {
         return [...this.works.values()]
             .filter((work) => !filter?.workId || work.workId === filter.workId)
-            .filter((work) => !filter?.status || work.status === filter.status)
             .sort((left, right) => left.createdAt - right.createdAt)
             .map((work) => ({ ...work, tasks: this.listTodos({ workId: work.workId }) }));
     }
@@ -55,7 +54,7 @@ export class TaskState {
         const todo = this.todos.get(taskId);
         return todo ? { ...todo } : undefined;
     }
-    createWork(workName, workInfo, status = "active") {
+    createWork(workName, workInfo) {
         if (this.works.size >= MAX_WORKS)
             throw new Error(`Maximum of ${MAX_WORKS} works reached.`);
         const now = Date.now();
@@ -63,7 +62,6 @@ export class TaskState {
             workId: `W${this.nextWorkId}`,
             workName: requiredName(workName, "workName"),
             workInfo: requiredText(workInfo, "workInfo"),
-            status,
             createdAt: now,
             updatedAt: now,
         };
@@ -76,7 +74,6 @@ export class TaskState {
         const normalized = compactPatch({
             workName: patch.workName === undefined ? undefined : requiredName(patch.workName, "workName"),
             workInfo: patch.workInfo === undefined ? undefined : requiredText(patch.workInfo, "workInfo"),
-            status: patch.status,
         });
         if (Object.keys(normalized).length === 0)
             throw new Error("WorkUpdate requires at least one changed field.");
@@ -139,23 +136,27 @@ export class TaskState {
     apply(event) {
         switch (event.type) {
             case "work-created": {
-                const status = restoredStatus(event.work.status);
                 assertId(event.work.workId, "W");
-                if (typeof event.work.workName !== "string" || typeof event.work.workInfo !== "string" || !status)
+                if (typeof event.work.workName !== "string" || typeof event.work.workInfo !== "string")
                     throw new Error("Malformed work entry.");
-                this.works.set(event.work.workId, { ...event.work, status, workName: safeSingleLine(event.work.workName) });
+                // Explicit fields keep retired Work status out of restored records.
+                this.works.set(event.work.workId, {
+                    workId: event.work.workId,
+                    workName: safeSingleLine(event.work.workName),
+                    workInfo: event.work.workInfo,
+                    createdAt: event.work.createdAt,
+                    updatedAt: event.work.updatedAt,
+                });
                 this.nextWorkId = Math.max(this.nextWorkId, numericId(event.work.workId) + 1);
                 break;
             }
             case "work-updated": {
-                const status = restoredStatus(event.patch.status);
                 const work = this.works.get(event.workId);
                 if (work)
                     this.works.set(event.workId, {
                         ...work,
                         ...(typeof event.patch.workName === "string" ? { workName: safeSingleLine(event.patch.workName) } : {}),
                         ...(typeof event.patch.workInfo === "string" ? { workInfo: event.patch.workInfo } : {}),
-                        ...(status ? { status } : {}),
                         updatedAt: event.at,
                     });
                 break;

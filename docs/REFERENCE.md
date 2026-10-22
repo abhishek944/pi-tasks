@@ -18,15 +18,15 @@ Limits:
 
 ## Data
 
-A work contains `workId`, `workName`, `workInfo`, `status`, `createdAt`, and `updatedAt`. Work status is `active`, `blocked`, `completed`, or `cancelled`; new works default to `active`.
+A work contains `workId`, `workName`, `workInfo`, `createdAt`, and `updatedAt`. It is a collection with no stored or derived lifecycle status. Work tools do not accept status, and WorkList has no status filter. The public WorkStatus type is removed; consumers should use TodoStatus for task lifecycle.
 
-A todo contains `taskId`, `workId`, `taskName`, `taskInfo`, `status`, optional `completionPercent`, `createdAt`, and `updatedAt`. Todo status uses the same four values; new todos default to `active`.
+A todo contains `taskId`, `workId`, `taskName`, `taskInfo`, `status`, optional `completionPercent`, `createdAt`, and `updatedAt`. Todo status is `active`, `blocked`, `completed`, or `cancelled`; new todos default to `active`.
 
 The public list shape assembles each work with `tasks: Todo[]`; tasks are stored separately to avoid duplicate state. Work progress is derived, not independently stored or editable.
 
-`Blocked` includes waiting for another agent’s output, review, an external response, user input, permission, or a genuine obstacle. Mark dependent tasks blocked immediately, with the dependency and resume condition in their information field. Actual delegated execution can remain active. Keep the parent active only while some required work can proceed; otherwise mark it blocked too. Resume affected records as active when the dependency resolves and work resumes. These are agent instructions, not automatic dependency detection or a wake mechanism.
+`Blocked` includes waiting for another agent’s output, review, an external response, user input, permission, or a genuine obstacle. Mark dependent tasks blocked immediately, with the dependency and resume condition in their information field. Tasks actually executing in a delegated agent can remain active. Resume affected tasks as active when the dependency resolves and work resumes. Works do not have status; cancelling a collection means explicitly cancelling its remaining tasks. These are agent instructions, not automatic dependency detection or a wake mechanism.
 
-Replay normalizes legacy `planned` and `pending` statuses to `active` in both creation and update events without rewriting history. Tools accept only the four current statuses. Existing IDs, details, and progress are preserved.
+Replay accepts version-1 Work events with or without status, ignores retired Work statuses and status-only patches, and preserves IDs, details, timestamps and tasks without rewriting history. Work updates containing name/context changes still apply. Task replay normalizes legacy `planned` and `pending` statuses to `active` in both creation and update events; task tools accept only the four current statuses. Older clients that require Work status cannot read new status-free Work creation events correctly: upgrade readers before sharing new history, and retain session files before rollback.
 
 ### Completion progress
 
@@ -35,14 +35,14 @@ Replay normalizes legacy `planned` and `pending` statuses to `active` in both cr
 - Completed tasks normalize to 100%; explicit partial progress with completed status is rejected. Explicit 100 requires completed status. Completion remains an agent assertion after verification, not an independent extension proof.
 - Moving a partial task to blocked retains its progress. Reopening a completed task without a new estimate becomes unknown rather than retaining 100%.
 - A work is the equal arithmetic mean of all non-cancelled task percentages, rounded down for display. For example, 100, 40, 0, 0 yields 35%.
-- Any unknown eligible task makes the work unknown (`—`); unknown is not silently 0. With no eligible tasks, work is unknown unless its own status is completed, then 100%.
-- A completed parent never overrides unfinished child progress. Work progress reaches 100 only when all eligible tasks are completed. Progress never changes statuses or auto-continuation eligibility.
+- Any unknown eligible task makes the work unknown (`—`); unknown is not silently 0. With no eligible tasks (empty Work or only cancelled tasks), work is unknown.
+- Work progress reaches 100 only when all eligible tasks are completed; there is no parent status override. Progress never changes task statuses or auto-continuation eligibility.
 - Optional progress fields are additive to version-1 branch events. Legacy completed tasks show 100%; other legacy tasks remain unknown until reported. Invalid optional progress is sanitized on replay without discarding the task.
 - Dashboard, compact panel, list output and copied Markdown share these calculations. The compact panel reserves a narrow right-hand percentage column with a divider; names truncate independently. `/works` retains inline `· N%` labels and unchanged navigation. Percentages do not predict remaining time; no subtasks, weights or separate navigation sidebar are added.
 
 ## Tracking behavior
 
-When all tracking tools are active, the extension adds hidden per-turn guidance for every normal request that starts or continues work. Pi finds or creates work, synchronizes todos, marks the current todo active before the attempt, and updates statuses afterward. Tracking is not skipped merely because the request looks small.
+When all tracking tools are active, the extension adds hidden per-turn guidance for every normal request that starts or continues work. Pi finds or creates the Work collection, synchronizes todos, marks the current todo active before the attempt, and updates task statuses afterward. Work context changes only when shared scope or decisions change. Tracking is not skipped merely because the request looks small.
 
 The guidance also requires every delegated subagent, at every depth, to create or resume its own session-local Work and Todos before assigned work, maintain a real `workId` and an active `taskId`, and return its IDs with results. Parent assignment IDs are recorded as context, not used to mutate another session's records. Worker prompts must carry this requirement, including stopping delegated execution if tracking tools or IDs are unavailable. This is instruction-only, not a tool-call gate or automatic tracking repair.
 
@@ -66,7 +66,7 @@ A fresh accepted main interactive/RPC run arms a new continuation epoch. Input i
 
 The synchronous `agent_before_settle` handler runs after native retries, compaction, and queued work. It accepts completed or error outcomes and requires a non-aborted signal, no pending messages in either the boundary preview or runtime queue, and no continuation already requested by an earlier handler. Pi is still busy at this actionable boundary, so it does not require `ctx.isIdle()`. Instead it appends one custom-message draft and requests one native continuation; Pi owns committing it and honoring cancellation. No detached prompt, timer, background worker, or polling loop is created.
 
-Any work or todo on the current branch whose status is not blocked, completed, or cancelled requires continuation. This includes active records and legacy planned/pending records, which replay normalizes to active. Completed, blocked, and cancelled records are settled. A settled parent does not hide an unfinished child. The prompt includes a bounded preview of IDs, names and statuses, and directs the agent to list tools for full details. No records means no continuation. The extension never mutates statuses, verifies work independently, or treats a blocker label as proof of an actual dependency.
+Any active task across all Works on the current branch requires continuation. Legacy planned/pending task statuses replay as active. Empty Works and completed, blocked, or cancelled tasks do not trigger continuation. Work metadata has no scheduling role. The prompt includes a bounded preview of IDs, names and statuses, and directs the agent to list tools for full details. No records means no continuation. The extension never mutates statuses, verifies work independently, or treats a blocker label as proof of an actual dependency.
 
 When `maxContinuations` is supplied, at most that many extra continuations are requested per fresh accepted main user run. The next unfinished boundary warns once and suspends continuation; a fresh user prompt resets the cap. With no limit supplied, continuation can consume tokens indefinitely while unfinished records remain, until explicitly interrupted, disabled or otherwise suspended, including during repeated provider failures. This is not a cost cap or a cap on native tool/retry requests, and another extension may independently request work. Settings changes take effect when Pi reloads effective settings, normally through `/reload`.
 

@@ -164,7 +164,7 @@ class TasksPanel {
             content.push(progressColumn(this.theme.fg("muted", "No works yet."), null, innerWidth, this.theme));
         for (const work of works) {
             const completed = work.tasks.filter((todo) => todo.status === "completed").length;
-            const summary = workSummaryLine(work.status, work.workName, `${completed}/${work.tasks.length}`, contentWidth, this.theme, work.workId);
+            const summary = workSummaryLine(work.workName, `${completed}/${work.tasks.length}`, contentWidth, this.theme, work.workId);
             content.push(progressColumn(summary, workCompletion(work), innerWidth, this.theme));
             for (const todo of work.tasks) {
                 const agent = delegateLink(todo.taskInfo);
@@ -407,24 +407,13 @@ function progressColumn(content, completion, width, theme) {
     const value = theme.fg(completion === null ? "muted" : "accent", formatCompletion(completion).padStart(PROGRESS_VALUE_WIDTH));
     return `${left}${padding}${theme.fg("border", " │ ")}${value}`;
 }
-function workSummaryLine(status, name, count, width, theme, workId) {
+function workSummaryLine(name, count, width, theme, workId) {
     const right = theme.fg("dim", count);
     const leftWidth = Math.max(0, width - visibleWidth(right) - 1);
-    const left = `${workIcon(status, theme)} ${recordId(workId, theme)} ${theme.fg("text", safeSingleLine(name))}`;
+    const left = `${recordId(workId, theme)} ${theme.fg("text", safeSingleLine(name))}`;
     const shownLeft = truncateToWidth(left, leftWidth, "…");
     const gap = " ".repeat(Math.max(1, width - visibleWidth(shownLeft) - visibleWidth(right)));
     return `${shownLeft}${gap}${right}`;
-}
-export function workIcon(status, theme) {
-    if (status === "completed")
-        return theme.fg("success", "✓");
-    if (status === "active")
-        return theme.fg("accent", "▶");
-    if (status === "blocked")
-        return theme.fg("warning", "!");
-    if (status === "cancelled")
-        return theme.fg("error", "×");
-    return theme.fg("muted", "○");
 }
 export function todoIcon(status, theme) {
     if (status === "completed")

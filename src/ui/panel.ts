@@ -9,7 +9,7 @@ import { taskOwner } from "../ownership.js";
 import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import type { TaskState } from "../state.js";
 import { safeSingleLine } from "../text.js";
-import type { TodoStatus, WorkStatus } from "../types.js";
+import type { TodoStatus } from "../types.js";
 
 export type TasksPanelMode = "floating" | "widget" | "off";
 type HeaderHitRegion = { start: number; end: number };
@@ -188,7 +188,7 @@ class TasksPanel implements Component {
     if (works.length === 0) content.push(progressColumn(this.theme.fg("muted", "No works yet."), null, innerWidth, this.theme));
     for (const work of works) {
       const completed = work.tasks.filter((todo) => todo.status === "completed").length;
-      const summary = workSummaryLine(work.status, work.workName, `${completed}/${work.tasks.length}`, contentWidth, this.theme, work.workId);
+      const summary = workSummaryLine(work.workName, `${completed}/${work.tasks.length}`, contentWidth, this.theme, work.workId);
       content.push(progressColumn(summary, workCompletion(work), innerWidth, this.theme));
       for (const todo of work.tasks) {
         const agent = delegateLink(todo.taskInfo);
@@ -426,21 +426,13 @@ function progressColumn(content: string, completion: number | null, width: numbe
   return `${left}${padding}${theme.fg("border", " │ ")}${value}`;
 }
 
-function workSummaryLine(status: WorkStatus, name: string, count: string, width: number, theme: Theme, workId: string): string {
+function workSummaryLine(name: string, count: string, width: number, theme: Theme, workId: string): string {
   const right = theme.fg("dim", count);
   const leftWidth = Math.max(0, width - visibleWidth(right) - 1);
-  const left = `${workIcon(status, theme)} ${recordId(workId, theme)} ${theme.fg("text", safeSingleLine(name))}`;
+  const left = `${recordId(workId, theme)} ${theme.fg("text", safeSingleLine(name))}`;
   const shownLeft = truncateToWidth(left, leftWidth, "…");
   const gap = " ".repeat(Math.max(1, width - visibleWidth(shownLeft) - visibleWidth(right)));
   return `${shownLeft}${gap}${right}`;
-}
-
-export function workIcon(status: WorkStatus, theme: Theme): string {
-  if (status === "completed") return theme.fg("success", "✓");
-  if (status === "active") return theme.fg("accent", "▶");
-  if (status === "blocked") return theme.fg("warning", "!");
-  if (status === "cancelled") return theme.fg("error", "×");
-  return theme.fg("muted", "○");
 }
 
 export function todoIcon(status: TodoStatus, theme: Theme): string {

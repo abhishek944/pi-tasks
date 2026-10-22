@@ -10,7 +10,6 @@ export function formatWorksMarkdown(works: WorkWithTodos[]): string {
     lines.push(
       `## ${work.workId} — ${escapeMarkdownInline(safeSingleLine(work.workName))}`,
       "",
-      `**Status:** ${work.status}`,
       `**Completion:** ${formatCompletion(workCompletion(work))}`,
       "",
       "### Details",

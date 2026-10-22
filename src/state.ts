@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { taskCompletion } from "./progress.js";
 import { safeSingleLine } from "./text.js";
-import type { TaskEvent, Todo, TodoStatus, Work, WorkStatus, WorkWithTodos } from "./types.js";
+import type { TaskEvent, Todo, TodoStatus, Work, WorkWithTodos } from "./types.js";
 
 export const TASK_ENTRY_TYPE = "pi-tasks-state";
 export const MAX_WORKS = 100;
@@ -29,10 +29,9 @@ export class TaskState {
     this.onChange();
   }
 
-  listWorks(filter?: { workId?: string; status?: WorkStatus }): WorkWithTodos[] {
+  listWorks(filter?: { workId?: string }): WorkWithTodos[] {
     return [...this.works.values()]
       .filter((work) => !filter?.workId || work.workId === filter.workId)
-      .filter((work) => !filter?.status || work.status === filter.status)
       .sort((left, right) => left.createdAt - right.createdAt)
       .map((work) => ({ ...work, tasks: this.listTodos({ workId: work.workId }) }));
   }
@@ -56,14 +55,13 @@ export class TaskState {
     return todo ? { ...todo } : undefined;
   }
 
-  createWork(workName: string, workInfo: string, status: WorkStatus = "active"): Work {
+  createWork(workName: string, workInfo: string): Work {
     if (this.works.size >= MAX_WORKS) throw new Error(`Maximum of ${MAX_WORKS} works reached.`);
     const now = Date.now();
     const work: Work = {
       workId: `W${this.nextWorkId}`,
       workName: requiredName(workName, "workName"),
       workInfo: requiredText(workInfo, "workInfo"),
-      status,
       createdAt: now,
       updatedAt: now,
     };
@@ -71,12 +69,11 @@ export class TaskState {
     return { ...work };
   }
 
-  updateWork(workId: string, patch: Partial<Pick<Work, "workName" | "workInfo" | "status">>): Work {
+  updateWork(workId: string, patch: Partial<Pick<Work, "workName" | "workInfo">>): Work {
     if (!this.works.has(workId)) throw new Error(`Work ${workId} not found.`);
     const normalized = compactPatch({
       workName: patch.workName === undefined ? undefined : requiredName(patch.workName, "workName"),
       workInfo: patch.workInfo === undefined ? undefined : requiredText(patch.workInfo, "workInfo"),
-      status: patch.status,
     });
     if (Object.keys(normalized).length === 0) throw new Error("WorkUpdate requires at least one changed field.");
     this.record({ version: 1, type: "work-updated", at: Date.now(), workId, patch: normalized });
@@ -138,21 +135,25 @@ export class TaskState {
   private apply(event: TaskEvent): void {
     switch (event.type) {
       case "work-created": {
-        const status = restoredStatus(event.work.status);
         assertId(event.work.workId, "W");
-        if (typeof event.work.workName !== "string" || typeof event.work.workInfo !== "string" || !status) throw new Error("Malformed work entry.");
-        this.works.set(event.work.workId, { ...event.work, status, workName: safeSingleLine(event.work.workName) });
+        if (typeof event.work.workName !== "string" || typeof event.work.workInfo !== "string") throw new Error("Malformed work entry.");
+        // Explicit fields keep retired Work status out of restored records.
+        this.works.set(event.work.workId, {
+          workId: event.work.workId,
+          workName: safeSingleLine(event.work.workName),
+          workInfo: event.work.workInfo,
+          createdAt: event.work.createdAt,
+          updatedAt: event.work.updatedAt,
+        });
         this.nextWorkId = Math.max(this.nextWorkId, numericId(event.work.workId) + 1);
         break;
       }
       case "work-updated": {
-        const status = restoredStatus(event.patch.status);
         const work = this.works.get(event.workId);
         if (work) this.works.set(event.workId, {
           ...work,
           ...(typeof event.patch.workName === "string" ? { workName: safeSingleLine(event.patch.workName) } : {}),
           ...(typeof event.patch.workInfo === "string" ? { workInfo: event.patch.workInfo } : {}),
-          ...(status ? { status } : {}),
           updatedAt: event.at,
         });
         break;
@@ -231,7 +232,7 @@ function assertId(id: unknown, prefix: "W" | "T"): asserts id is string {
   }
 }
 
-function restoredStatus(value: unknown): WorkStatus | undefined {
+function restoredStatus(value: unknown): TodoStatus | undefined {
   // Keep legacy branch events readable without exposing retired statuses in tools.
   if (value === "planned" || value === "pending") return "active";
   if (value === "active" || value === "blocked" || value === "completed" || value === "cancelled") return value;

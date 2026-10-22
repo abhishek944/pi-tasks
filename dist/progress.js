@@ -7,7 +7,7 @@ export function taskCompletion(todo) {
 export function workCompletion(work) {
     const tasks = work.tasks.filter((todo) => todo.status !== "cancelled");
     if (tasks.length === 0)
-        return work.status === "completed" ? 100 : null;
+        return null;
     let total = 0;
     for (const todo of tasks) {
         const value = taskCompletion(todo);

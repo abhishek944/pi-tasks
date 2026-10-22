@@ -1,10 +1,8 @@
-export type WorkStatus = "active" | "blocked" | "completed" | "cancelled";
-export type TodoStatus = WorkStatus;
+export type TodoStatus = "active" | "blocked" | "completed" | "cancelled";
 export interface Work {
     workId: string;
     workName: string;
     workInfo: string;
-    status: WorkStatus;
     createdAt: number;
     updatedAt: number;
 }
@@ -31,7 +29,7 @@ export type TaskEvent = {
     type: "work-updated";
     at: number;
     workId: string;
-    patch: Partial<Pick<Work, "workName" | "workInfo" | "status">>;
+    patch: Partial<Pick<Work, "workName" | "workInfo">>;
 } | {
     version: 1;
     type: "work-deleted";

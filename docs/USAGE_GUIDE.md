@@ -5,12 +5,12 @@
 For every normal request that starts or continues work, Pi should:
 
 1. Find existing work and todos.
-2. Create or update the relevant work and mark it active.
+2. Create the relevant Work collection, or refresh its shared context when needed.
 3. Create or update detailed todos for the requested scope.
 4. Mark the current todo active before starting it.
 5. During longer tasks, report interim progress after roughly 5–10 meaningful working steps or a milestone, when an estimate is possible.
 6. Mark the todo blocked immediately if its next step must wait on a dependency; otherwise update it after the attempt as active, completed, or cancelled.
-7. Complete the work only when its required todos are complete.
+7. Keep status on tasks only; update Work context when scope or shared decisions change.
 
 The extension applies this guidance across all loaded skills and does not skip work merely because it looks small. It does not update tracking during `/ask`, `/btw`, or BTW side threads.
 
@@ -53,11 +53,11 @@ Every subagent must create or resume its own session-local Work and Todos before
 
 ## Statuses and dependencies
 
-Works and todos use only `active`, `blocked`, `completed`, and `cancelled`. New records default to `active`; saved legacy `planned` and `pending` statuses restore as active but are no longer accepted by tools.
+Works are collections with no status. Tasks use only `active`, `blocked`, `completed`, and `cancelled`. New tasks default to `active`; saved legacy task statuses `planned` and `pending` restore as active but are no longer accepted by tools. Old Work statuses are ignored during replay; no saved history is rewritten.
 
-Use `blocked` immediately when a task cannot proceed until another agent produces output, a review finishes, an external response arrives, the user responds, permission is granted, or another obstacle is resolved. Record which dependency it awaits and what will unblock it in `taskInfo`; retain its current completion estimate. Work actually executing in another agent may remain active, but downstream tasks waiting for that output are blocked.
+Use `blocked` immediately when a task cannot proceed until another agent produces output, a review finishes, an external response arrives, the user responds, permission is granted, or another obstacle is resolved. Record which dependency it awaits and what will unblock it in `taskInfo`; retain its current completion estimate. Tasks actually executing in another agent may remain active, but downstream tasks waiting for that output are blocked.
 
-Keep the parent work active while some required work can proceed. When all remaining work must wait, mark the parent blocked too and record the reason and resume condition in `workInfo`. When the dependency resolves and work resumes, mark the affected records active. Neither blocked status nor changing it schedules a wake automatically; use the appropriate monitor or event when an automatic notification is needed.
+When the dependency resolves and work resumes, mark the affected tasks active. Do not assign status to the parent Work. To cancel the whole collection, cancel its remaining tasks explicitly. Neither blocked status nor changing it schedules a wake automatically; use the appropriate monitor or event when an automatic notification is needed.
 
 ## Continue unfinished work automatically
 
@@ -73,7 +73,7 @@ This is off by default and requires Pi 1.2.0+. Add the following to global `~/.p
 }
 ```
 
-Send a normal prompt to start. After success or failure, if any work or todo is not blocked, completed, or cancelled, the agent receives a message to continue and verify it. Children count independently of their parent; legacy planned/pending records restore as active. Blocked, completed, and cancelled records do not cause another continuation. Keep the parent work synchronized too, and record a genuine blocker reason in its information field before handing off.
+Send a normal prompt to start. After success or failure, if any task across all Works on the current session branch is active, the agent receives a message to continue and verify it. Legacy planned/pending task statuses restore as active. Empty Works and blocked, completed, or cancelled tasks do not cause another continuation. Record genuine blockers and resume conditions in taskInfo before handing off.
 
 Press Escape/abort to stop. The extension will not restart from a monitor wake or another extension's message; send a new main prompt when you want it to resume. Failed runs do not disarm continuation: after native retries, unfinished records request another run. Repeated provider failures can therefore keep consuming tokens with no configured limit. Reloading or navigating session branches does not silently resume unfinished work.
 
@@ -82,16 +82,15 @@ Omitting `maxContinuations` means no continuation limit: it can keep consuming t
 ## Work tools
 
 ```text
-WorkCreate workName="Improve authentication" workInfo="Detailed context..." status="active"
+WorkCreate workName="Improve authentication" workInfo="Detailed context..."
 WorkList
 WorkList limit=10
-WorkList status="active" limit=5
 WorkList workId="W1"
-WorkUpdate workId="W1" status="blocked" workInfo="Detailed blocker and retained context..."
+WorkUpdate workId="W1" workInfo="Updated shared scope and decisions..."
 WorkDelete workId="W1"
 ```
 
-`WorkList` returns all matching works when `limit` is omitted. A positive integer `limit` selects the newest matching works after filters, displayed oldest-to-newest; every selected work still includes all of its todos. The result shows how many works were returned and how many matched in total. `WorkDelete` also removes associated todos.
+Work tools do not accept `status`; `WorkList` filters by Work ID only. `WorkList` returns all matching works when `limit` is omitted. A positive integer `limit` selects the newest matching works after filters, displayed oldest-to-newest; every selected work still includes all of its todos. The result shows how many works were returned and how many matched in total. `WorkDelete` also removes associated todos.
 
 ## Todo tools
 
@@ -112,7 +111,7 @@ TodoDelete taskId="T1"
 
 During longer tasks, Pi should include a `completionPercent` estimate in `TodoUpdate` after roughly 5–10 meaningful working steps or a milestone, rather than waiting until completion or only updating status. Explain the evidence and remaining work in `taskInfo`. Estimates remain optional: use `null` when unknown, and leave a percentage unchanged if there is no new evidence. This is model-facing guidance, not an enforced schedule or an automatic percentage increase. These are approximate AI-reported values, not a fixed percentage for each status and not a time prediction. Use an integer 0–100 or `null` for unknown. Completed status means verified completion and displays 100%; 100 without completed status is rejected. Partial progress requires reopening a completed task; reopening without a fresh estimate makes it unknown. Blocking retains the current estimate.
 
-Work progress averages all non-cancelled tasks equally and rounds down. Tasks at 100%, 40%, 0%, 0% produce 35% work completion, not 25% based on finished-task counts. If any eligible task lacks an estimate, the work displays `—`. No eligible tasks also means unknown unless the work itself is verified complete. A completed parent never hides unfinished task progress. Existing sessions retain their records; legacy completed tasks display 100%, while other missing estimates remain unknown.
+Work progress averages all non-cancelled tasks equally and rounds down. Tasks at 100%, 40%, 0%, 0% produce 35% work completion, not 25% based on finished-task counts. If any eligible task lacks an estimate, the work displays `—`. No eligible tasks (an empty Work or only cancelled tasks) also means unknown. Work progress has no separate status or override. Existing sessions retain their records; legacy completed tasks display 100%, while other missing estimates remain unknown.
 
 ## TUI
 
@@ -174,7 +173,7 @@ Navigation directly focuses the linked paneId through Herdr. Closed panes, missi
 
 The compact panel no longer displays the session ID. Its underlined `[Open session]` action sits immediately after Copy in floating, widget and minimized layouts. It opens this agent's existing artifact directory under repository `var/` in Cursor, including a nested delegated session folder. If no folder exists, it creates `var/<full-sessionId>/`; multiple matching folders report an ambiguity rather than guessing. Session identity comes from Pi's context, not a pane name. Folder resolution and Cursor launch happen only on activation, never during rendering. `/works-panel open-session` is the keyboard-command alternative. The existing Open action still opens the repository. Narrow compact headers use `[-]`/`[+]` for Minimize/Maximize so all actions fit. The `/works` dashboard retains its existing title and controls.
 
-The panel defaults to a floating top-right layout and does not take keyboard focus. A slim, separated right-hand column keeps work and task percentages aligned and visible even when names are long; the left side retains names, status icons and work task-counts. It hides on small terminals. The top border centers repository-wide Git status: `git main · S2 U3 ?1` means two staged files, three unstaged files, and one untracked file; a file with both staged and unstaged edits counts in both. A clean repository shows `git main · clean`. Long branches shorten before counts. Detached HEAD shows `@` plus the short commit. Git remains visible while minimized and adds no content row.
+The panel defaults to a floating top-right layout and does not take keyboard focus. A slim, separated right-hand column keeps work and task percentages aligned and visible even when names are long; the left side retains names, task status icons and Work task-counts. Work rows have no status icons. It hides on small terminals. The top border centers repository-wide Git status: `git main · S2 U3 ?1` means two staged files, three unstaged files, and one untracked file; a file with both staged and unstaged edits counts in both. A clean repository shows `git main · clean`. Long branches shorten before counts. Detached HEAD shows `@` plus the short commit. Git remains visible while minimized and adds no content row.
 
 The asynchronous Git cache refreshes every second while a view is attached; file-changing tool results expire it sooner without blanking the last snapshot. Initial reads show `git loading…`; outside Git the border is plain, and initial failures show `git unavailable`. Later refresh failures retain the last snapshot until a successful read. Polling is read-only and stops when both the panel and dashboard are closed/off.
 

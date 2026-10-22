@@ -18,7 +18,7 @@ import { formatCompletion, taskCompletion, workCompletion } from "../progress.js
 import type { TaskState } from "../state.js";
 import { safeMultiline, safeSingleLine } from "../text.js";
 import type { Todo, WorkWithTodos } from "../types.js";
-import { border, type DelegateHitRegion, delegateHitRegion, frame, gitBorder, ownerBadge, progressName, recordId, rule, todoIcon, workIcon } from "./panel.js";
+import { border, type DelegateHitRegion, delegateHitRegion, frame, gitBorder, ownerBadge, progressName, recordId, rule, todoIcon } from "./panel.js";
 
 type DashboardItem =
   | { key: `work:${string}`; kind: "work"; work: WorkWithTodos }
@@ -85,9 +85,9 @@ export class WorksDashboard implements Component, Focusable {
     this.syncSelection(items);
     const terminalRows = this.tui.terminal.rows || process.stdout.rows || 30;
     const dialogHeight = Math.max(8, Math.min(36, Math.floor(terminalRows * 0.82)));
-    const activeWorks = works.filter((work) => work.status === "active").length;
+    const activeTodos = todos.filter((todo) => todo.status === "active").length;
     const completedTodos = todos.filter((todo) => todo.status === "completed").length;
-    const summary = `${activeWorks}/${works.length} works active · ${completedTodos}/${todos.length} todos completed · session scoped`;
+    const summary = `${works.length} works · ${activeTodos} todos active · ${completedTodos}/${todos.length} completed · session scoped`;
 
     const bodyHeight = Math.max(0, dialogHeight - CHROME_LINES);
     const detailBudget = this.detailsVisible ? Math.max(0, Math.floor(bodyHeight / 2)) : 0;
@@ -241,9 +241,9 @@ export class WorksDashboard implements Component, Focusable {
     const prefix = selected ? this.theme.fg("accent", "▶ ") : "  ";
     if (item.kind === "work") {
       const done = item.work.tasks.filter((todo) => todo.status === "completed").length;
-      const metadata = this.theme.fg("dim", `${item.work.status} · ${done}/${item.work.tasks.length}`);
-      const nameWidth = width - visibleWidth(prefix) - 3 - visibleWidth(metadata);
-      return truncateToWidth(`${prefix}${workIcon(item.work.status, this.theme)} ${this.theme.bold(progressName(item.work.workName, workCompletion(item.work), nameWidth, `${recordId(item.work.workId, this.theme)} `))} ${metadata}`, width, "");
+      const metadata = this.theme.fg("dim", `${done}/${item.work.tasks.length} completed`);
+      const nameWidth = width - visibleWidth(prefix) - 1 - visibleWidth(metadata);
+      return truncateToWidth(`${prefix}${this.theme.bold(progressName(item.work.workName, workCompletion(item.work), nameWidth, `${recordId(item.work.workId, this.theme)} `))} ${metadata}`, width, "");
     }
     const metadata = this.theme.fg("dim", item.todo.status);
     const nameWidth = width - visibleWidth(prefix) - 5 - visibleWidth(metadata);
@@ -261,8 +261,7 @@ export class WorksDashboard implements Component, Focusable {
     let heading: string;
     if (item.kind === "work") {
       const lead = `${recordId(item.work.workId, this.theme)} `;
-      const tail = ` · ${item.work.status}`;
-      heading = `${lead}${progressName(item.work.workName, workCompletion(item.work), width - visibleWidth(lead + tail))}${tail}`;
+      heading = `${lead}${progressName(item.work.workName, workCompletion(item.work), width - visibleWidth(lead))}`;
     } else {
       const taskName = safeSingleLine(item.todo.taskName);
       const taskLead = `${recordId(item.todo.taskId, this.theme)} ${ownerBadge(item.todo.taskInfo, this.theme, Boolean(delegateLink(item.todo.taskInfo)))} `;

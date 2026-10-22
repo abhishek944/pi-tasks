@@ -5,7 +5,7 @@ export function formatWorksMarkdown(works) {
     if (works.length === 0)
         return `${lines.join("\n")}\n_No works or todos in this session._\n`;
     for (const work of works) {
-        lines.push(`## ${work.workId} — ${escapeMarkdownInline(safeSingleLine(work.workName))}`, "", `**Status:** ${work.status}`, `**Completion:** ${formatCompletion(workCompletion(work))}`, "", "### Details", "", markdownBody(work.workInfo), "", "### Todos", "");
+        lines.push(`## ${work.workId} — ${escapeMarkdownInline(safeSingleLine(work.workName))}`, "", `**Completion:** ${formatCompletion(workCompletion(work))}`, "", "### Details", "", markdownBody(work.workInfo), "", "### Todos", "");
         if (work.tasks.length === 0) {
             lines.push("_No todos._", "");
             continue;

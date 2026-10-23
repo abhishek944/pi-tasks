@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { createTimingReport } from "../delegated-time.js";
 import { taskOwner } from "../ownership.js";
 import type { TaskState } from "../state.js";
 import { renderTaskCall, renderTaskResult, taskResult } from "../tool-result.js";
@@ -44,11 +45,11 @@ export function registerAgentTools(pi: ExtensionAPI, state: TaskState): void {
   };
   pi.registerTool({
     name: "AgentCreate", label: "AgentCreate",
-    description: "Wrap Herdr tab creation, Pi startup and MonitorCreate. Returns actual paneId/tabId/monitorId and a prepared assignment; automatically links the task's delegate badge and marks the parent task blocked while awaiting the worker. Does NOT send work: confirm MonitorList shows subscription ready, then AgentSend the returned assignment. onSignal wakes the parent for worker state changes; optional onDone handles monitor termination, not task completion. No private agent registry, automatic recovery or process checks.",
+    description: "Wrap a timing descriptor, Herdr tab creation, Pi startup and MonitorCreate. Requires an existing canonical taskDir inside repository var/. Returns reportPath, actual paneId/tabId/monitorId and a prepared assignment with timing-export instructions; automatically links the task's delegate badge and marks the parent task blocked while awaiting the worker. Does NOT send work: confirm MonitorList shows subscription ready, then AgentSend the returned assignment. onSignal wakes the parent for worker state changes; optional onDone handles monitor termination, not task completion. No private agent registry, automatic recovery or process checks.",
     promptGuidelines: ["Prefer these agent tools over CLI for supported operations; use Herdr CLI only for missing capabilities.", "Choose explicit provider/model/thinking/Fast through model-routing-policy. Create only authorized agents, never in /ask or /btw.", "After AgentCreate, confirm MonitorList shows the pane subscription ready before AgentSend. Do not add a duplicate monitor. Read actual output/files before completing tasks."],
     parameters: Type.Object({
       workId: Type.String({ pattern: "^W[1-9][0-9]*$" }), taskId: Type.String({ pattern: "^T[1-9][0-9]*$" }),
-      taskDir: Type.String({ minLength: 1, description: "Existing canonical parent task artifact directory from implement. Passed to the worker; no directory is created by this wrapper." }),
+      taskDir: Type.String({ minLength: 1, description: "Existing canonical parent task artifact directory from implement, inside repository var/. A unique timing descriptor is written here and passed to the worker; no directory is created by this wrapper." }),
       assignment: Type.String({ minLength: 1, maxLength: 32_000 }), provider: Type.String({ minLength: 1 }), model: Type.String({ minLength: 1 }),
       thinking: Type.String({ minLength: 1, description: "Explicit thinking level supported by the chosen model." }),
       fast: Type.Optional(Type.Boolean({ description: "Forward --fast only when requested and supported." })),
@@ -61,7 +62,8 @@ export function registerAgentTools(pi: ExtensionAPI, state: TaskState): void {
       monitorHost(ctx);
       const todo = state.getTodo(params.taskId);
       if (!todo || todo.workId !== params.workId || taskOwner(todo.taskInfo) !== "delegate") throw new Error("Use an existing task in this work with owner: delegate.");
-      const handles: Record<string, unknown> = {};
+      const reportPath = await createTimingReport(ctx, params.taskDir, params.workId, params.taskId);
+      const handles: Record<string, unknown> = { reportPath };
       try {
         const current = object((await herdr(["pane", "current"], ctx.cwd, signal)).pane);
         if (typeof current?.workspace_id !== "string") throw new Error("Herdr returned no current workspace ID.");
@@ -75,15 +77,16 @@ export function registerAgentTools(pi: ExtensionAPI, state: TaskState): void {
         if (params.fast) args.push("--fast");
         await herdr(args, ctx.cwd, signal, 45_000);
         const watched = await monitor(ctx, "MonitorCreate", { herdrPaneId: pane.pane_id, description: `Agent ${params.taskId} (${pane.pane_id})`, timeout: 0,
-          onSignal: params.onSignal, ...(params.onDone === undefined ? {} : { onDone: params.onDone }) }, signal);
+          onSignal: `${params.onSignal}\nWhen worker output is available, call TaskTimeImport for taskId ${params.taskId} to import measured effort from its timing report. Timing import does not verify or complete the task.`, ...(params.onDone === undefined ? {} : { onDone: params.onDone }) }, signal);
         if (typeof watched.monitorId !== "string") throw new Error("Update pi-loop-monitor: MonitorCreate must return details.monitorId.");
         handles.monitorId = watched.monitorId;
         const currentTodo = state.getTodo(params.taskId);
         if (!currentTodo || currentTodo.workId !== params.workId) throw new Error("The parent task is no longer available for linking.");
+        state.setDelegatedTime(params.taskId, { reportPath, elapsedMs: null });
         state.updateTodo(params.taskId, { status: "blocked", blockedReason: "Waiting for the delegated agent. Resume when its output is available for inspection and verification.", taskInfo: withPaneLink(currentTodo.taskInfo, pane.pane_id, watched.monitorId) });
-        const assignment = `Parent session ${ctx.sessionManager.getSessionId()}, work ${params.workId}, task ${params.taskId}. Exact parentTaskDir: ${params.taskDir}. Read global implement and applicable skills. Obtain your own PI_SESSION_ID through your shell, establish your own Work and active Todo using WorkList/TodoList and create/update tools before executing, keep them current, and return your IDs, nested task artifact path, changed files, checks and blockers. Parent IDs are context, not shared records. This handoff grants no additional permissions.\n\n${params.assignment}`;
+        const assignment = `Parent session ${ctx.sessionManager.getSessionId()}, work ${params.workId}, task ${params.taskId}. Exact parentTaskDir: ${params.taskDir}. Read global implement and applicable skills. Obtain your own PI_SESSION_ID through your shell, establish your own Work and active Todo using WorkList/TodoList and create/update tools before executing, keep them current, and return your IDs, nested task artifact path, changed files, checks and blockers. Parent IDs are context, not shared records. This handoff grants no additional permissions. Timing reportPath: ${JSON.stringify(reportPath)}. Before returning results, pause or complete every assignment task, import any nested delegates with TaskTimeImport, then call TaskTimeExport with this exact reportPath and all assignment-local taskIds (including cancelled tasks, excluding unrelated work). Never calculate or type durations yourself. After follow-ups, export the cumulative set again to the same reportPath. If export is unavailable or fails, report that limitation; do not hand-write the timing file.\n\n${params.assignment}`;
         return result("AgentCreate", { ...handles, taskDir: params.taskDir, assignment, assignmentSent: false,
-          next: "Confirm MonitorList shows subscription ready, then AgentSend this assignment to the returned paneId." });
+          next: "Confirm MonitorList shows subscription ready, then AgentSend this assignment to the returned paneId. After worker output is available, call TaskTimeImport for this task before closing its agent; verify completion separately." });
       } catch (error) {
         throw new Error(`${error instanceof Error ? error.message : String(error)}. The command may have partially completed. Handles returned so far: ${JSON.stringify(handles)}. Inspect these resources; no automatic retry or cleanup was performed.`);
       }

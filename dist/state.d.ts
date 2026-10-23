@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Todo, TodoStatus, Work, WorkWithTodos } from "./types.js";
+import type { DelegatedTime, Todo, TodoStatus, Work, WorkWithTodos } from "./types.js";
 export declare const TASK_ENTRY_TYPE = "pi-tasks-state";
 export declare const MAX_WORKS = 100;
 export declare const MAX_TODOS = 500;
@@ -38,6 +38,8 @@ export declare class TaskState {
     updateTodo(taskId: string, patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status" | "blockedReason" | "completionPercent">> & {
         working?: boolean;
     }): Todo;
+    /** Replace a cumulative assignment snapshot, never add it again on retry. */
+    setDelegatedTime(taskId: string, source: DelegatedTime): void;
     deleteTodo(taskId: string): boolean;
     private record;
     private apply;

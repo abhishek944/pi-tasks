@@ -4,6 +4,7 @@ import { delegateLink, focusPane } from "./agents/links.js";
 import { registerAgentTools } from "./agents/tools.js";
 import { registerTaskAutoContinue } from "./auto-continue.js";
 import { registerWorksCommand } from "./command.js";
+import { registerDelegatedTimeTools } from "./delegated-time.js";
 import { GitStatusCache } from "./git-status.js";
 import { openRepository, openSession } from "./open-repository.js";
 import { TaskState } from "./state.js";
@@ -20,6 +21,7 @@ export default function tasksExtension(pi: ExtensionAPI): void {
   panel = new TasksPanelHost(state, git);
 
   registerTaskTools(pi, state);
+  registerDelegatedTimeTools(pi, state);
   registerTaskTiming(pi, state);
   registerAgentTools(pi, state);
   registerTrackingGuidance(pi);
@@ -92,4 +94,4 @@ export default function tasksExtension(pi: ExtensionAPI): void {
   });
 }
 
-export type { Todo, TodoStatus, Work, WorkWithTodos } from "./types.js";
+export type { DelegatedTime, Todo, TodoStatus, Work, WorkWithTodos } from "./types.js";

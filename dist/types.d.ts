@@ -6,6 +6,12 @@ export interface Work {
     createdAt: number;
     updatedAt: number;
 }
+/** One assignment's cumulative imported effort; absent measurement stays unknown. */
+export interface DelegatedTime {
+    reportPath: string;
+    elapsedMs: number | null;
+    workerSessionId?: string;
+}
 export interface Todo {
     taskId: string;
     workId: string;
@@ -17,6 +23,7 @@ export interface Todo {
     completionPercent?: number | null;
     /** Accumulated measured time; missing/null means historical time is unknown. */
     elapsedMs?: number | null;
+    delegatedTimes?: DelegatedTime[];
     /** Current interval start, exposed only in live snapshots, never restored. */
     workingSince?: number;
     createdAt: number;
@@ -58,6 +65,12 @@ export type TaskEvent = {
     at: number;
     taskId: string;
     elapsedMs: number;
+} | {
+    version: 1;
+    type: "todo-delegated-time";
+    at: number;
+    taskId: string;
+    source: DelegatedTime;
 } | {
     version: 1;
     type: "todo-deleted";

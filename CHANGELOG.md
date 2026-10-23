@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.0 - 2026-10-23
+
+- Add `TaskTimeExport` and `TaskTimeImport` to carry measured worker effort through assignment-specific JSON snapshots. AgentCreate prepares the shared report and export/import instructions without changing Herdr or pi-loop-monitor.
+- Include imported effort in delegated task and Work time while leaving parent tasks blocked. Persist cumulative sources across reloads, replace repeated imports without double-counting, preserve unknown timing, and support nested delegation and follow-up exports.
+- Validate report paths, parent/worker identities, paused task selections and bounded timing values. Keep measured durations extension-owned rather than accepting model estimates.
+
 ## 0.13.0 - 2026-10-23
 
 - Add `blockedReason` to TodoCreate and TodoUpdate. Require a reason when creating a blocked task or entering blocked status, preserve it during other blocked edits, and clear it when leaving blocked. Restore older tasks without a reason and include reasons in lists and copied Markdown. AgentCreate supplies its automatic waiting reason.

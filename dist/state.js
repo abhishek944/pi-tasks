@@ -63,7 +63,7 @@ export class TaskState {
         return todo ? this.snapshot(todo) : undefined;
     }
     snapshot(todo) {
-        return { ...todo, workingSince: todo.taskId === this.focusedTaskId ? this.workingSince : undefined };
+        return { ...todo, delegatedTimes: todo.delegatedTimes?.map((source) => ({ ...source })), workingSince: todo.taskId === this.focusedTaskId ? this.workingSince : undefined };
     }
     /** Gate the selected task on actual agent execution, not task status. */
     setAgentRunning(running) {
@@ -200,6 +200,20 @@ export class TaskState {
             this.setWorking(taskId, patch.working);
         return this.getTodo(taskId);
     }
+    /** Replace a cumulative assignment snapshot, never add it again on retry. */
+    setDelegatedTime(taskId, source) {
+        const todo = this.todos.get(taskId);
+        if (!todo || taskOwner(todo.taskInfo) !== "delegate")
+            throw new Error("Delegated timing requires an existing owner: delegate task.");
+        if (!validDelegatedTime(source))
+            throw new Error("Invalid delegated timing source.");
+        const previous = todo.delegatedTimes?.find((entry) => entry.reportPath === source.reportPath);
+        if (previous?.workerSessionId && previous.workerSessionId !== source.workerSessionId)
+            throw new Error("Timing report belongs to another worker session.");
+        if (previous?.elapsedMs === source.elapsedMs && previous?.workerSessionId === source.workerSessionId)
+            return;
+        this.record({ version: 1, type: "todo-delegated-time", at: Date.now(), taskId, source });
+    }
     deleteTodo(taskId) {
         if (!this.todos.has(taskId))
             return false;
@@ -260,6 +274,7 @@ export class TaskState {
                         taskName: safeSingleLine(event.todo.taskName),
                         completionPercent: taskCompletion(event.todo),
                         elapsedMs: validElapsed(event.todo.elapsedMs) ? event.todo.elapsedMs : null,
+                        delegatedTimes: undefined,
                         workingSince: undefined,
                     });
                 this.nextTaskId = Math.max(this.nextTaskId, numericId(event.todo.taskId) + 1);
@@ -293,6 +308,14 @@ export class TaskState {
                     this.todos.set(event.taskId, { ...todo, elapsedMs: event.elapsedMs });
                 break;
             }
+            case "todo-delegated-time": {
+                const todo = this.todos.get(event.taskId);
+                if (todo && validDelegatedTime(event.source)) {
+                    const sources = (todo.delegatedTimes ?? []).filter((source) => source.reportPath !== event.source.reportPath);
+                    this.todos.set(event.taskId, { ...todo, delegatedTimes: [...sources, { ...event.source }] });
+                }
+                break;
+            }
             case "todo-deleted":
                 this.todos.delete(event.taskId);
                 break;
@@ -316,6 +339,11 @@ function normalizeBlockedReason(status, supplied, current) {
     if (reason.length > 10_000)
         throw new Error("blockedReason must not exceed 10000 characters.");
     return reason;
+}
+function validDelegatedTime(value) {
+    return !!value && typeof value.reportPath === "string" && value.reportPath.length > 0
+        && (value.elapsedMs === null || validElapsed(value.elapsedMs))
+        && (value.workerSessionId === undefined || (typeof value.workerSessionId === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value.workerSessionId)));
 }
 function validElapsed(value) {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -368,7 +396,7 @@ function parseEvent(value) {
     const candidate = value;
     if (candidate.version !== 1 || typeof candidate.type !== "string")
         return undefined;
-    if (!["work-created", "work-updated", "work-deleted", "todo-created", "todo-updated", "todo-deleted", "todo-time"].includes(candidate.type))
+    if (!["work-created", "work-updated", "work-deleted", "todo-created", "todo-updated", "todo-deleted", "todo-time", "todo-delegated-time"].includes(candidate.type))
         return undefined;
     return value;
 }

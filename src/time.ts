@@ -3,10 +3,15 @@ import type { Todo, WorkWithTodos } from "./types.js";
 
 /** Measured task effort, not time since task creation. */
 export function taskTime(todo: Todo, now = Date.now()): number | null {
-  // Parent delegate records have no remote timing source. Keep local intervals
-  // stored, but never present a local subtotal as the full delegated effort.
-  if (taskOwner(todo.taskInfo) === "delegate" || todo.elapsedMs === undefined || todo.elapsedMs === null) return null;
-  return todo.elapsedMs + (todo.workingSince === undefined ? 0 : Math.max(0, now - todo.workingSince));
+  // A delegate without a report is unmeasured, not a zero-length assignment.
+  if (taskOwner(todo.taskInfo) === "delegate" && !todo.delegatedTimes?.length) return null;
+  if (todo.elapsedMs === undefined || todo.elapsedMs === null) return null;
+  let total = todo.elapsedMs + (todo.workingSince === undefined ? 0 : Math.max(0, now - todo.workingSince));
+  for (const source of todo.delegatedTimes ?? []) {
+    if (source.elapsedMs === null) return null;
+    total += source.elapsedMs;
+  }
+  return Number.isSafeInteger(total) ? total : null;
 }
 
 /** Cancelled tasks still consumed effort. Unknown historical time stays unknown. */
@@ -16,6 +21,7 @@ export function workTime(work: WorkWithTodos, now = Date.now()): number | null {
     const elapsed = taskTime(todo, now);
     if (elapsed === null) return null;
     total += elapsed;
+    if (!Number.isSafeInteger(total)) return null;
   }
   return work.tasks.length ? total : null;
 }

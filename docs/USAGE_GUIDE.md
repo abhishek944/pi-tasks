@@ -120,7 +120,30 @@ The first call selects T1; the second pauses T1 and selects T2; the third pauses
 
 Time is saved total milliseconds plus `Date.now() - workingSince` while running. The extension saves each interval when paused, switched, or finished, not on every one-second display refresh. Thinking and foreground tool execution count. Idle periods, retry delays between agent loops, and blocking extension UI prompts pause timing. Blocking, completion, cancellation, changing away from self ownership, abort, and shutdown close the interval. Select again at the beginning of each new run. A restored session or branch always starts paused and excludes offline time. Abrupt process termination can lose the unsaved current interval; there is no background checkpoint writer. Blocking prompt exclusion requires a Pi host emitting `ui_prompt_start` and `ui_prompt_end`; older hosts retain loop-boundary timing.
 
-The compact panel and `/works` show reserved Done and Time columns; `▶` beside a duration means it is running. New tasks show `0s`. Legacy tasks without timing show `—`; selecting one begins measurement from now, not from its creation date. Work time sums task effort, including cancelled tasks; any unknown duration makes its total unknown. This is not elapsed wall-clock time and does not predict completion. Each delegated agent times its own local self tasks; parent delegate records show `—` because remote time is unmeasured, making the Work total unknown rather than a misleading local-only subtotal. List tools and copied Markdown include durations too.
+The compact panel and `/works` show reserved Done and Time columns; `▶` beside a duration means it is running. New tasks show `0s`. Legacy tasks without timing show `—`; selecting one begins measurement from now, not from its creation date. Work time sums task effort, including cancelled tasks; any unknown duration makes its total unknown. This is not elapsed wall-clock time and does not predict completion. Each delegated agent times its own local tasks. Parent delegate records show `—` until the worker exports measured time and the parent imports it. Imported effort contributes to both the parent task and its Work, even while the parent task remains blocked. List tools and copied Markdown include durations too.
+
+### Delegated timing
+
+AgentCreate creates a unique `delegated-time-<id>.json` descriptor below the existing canonical parent task directory and returns its `reportPath`. Its prepared worker assignment includes export instructions; its monitor callback includes import instructions. Herdr still runs the worker and pi-loop-monitor still reports state changes. The timing file, not the notification or chat response, carries the measured values. Both agents need this version of pi-tasks loaded.
+
+Before returning, the worker pauses or completes its assignment tasks and exports their timing:
+
+```text
+TodoUpdate taskId="T1" working=false
+TaskTimeExport reportPath="<exact path from AgentCreate>" taskIds=["T1", "T2"]
+```
+
+Use worker-local IDs for every task in this assignment, including cancelled tasks. Exclude unrelated work. Durations are read by the extension; the model never supplies milliseconds. Import any nested delegates before exporting their containing task. Unknown nested or historical effort stays unknown. An export is a paused snapshot, not a live timer; work performed after export needs a new export.
+
+After inspecting the worker output, the parent imports timing using its own task ID:
+
+```text
+TaskTimeImport taskId="T5"
+```
+
+Import leaves status and completion unchanged. The parent can remain blocked and still display measured worker effort. Import before closing the worker, so export failures can be corrected. Repeated imports replace the previous cumulative value. After follow-ups, the worker re-exports all previously included task IDs plus any new assignment tasks to the same file, and the parent imports again. A new AgentCreate on the same parent task registers an additional assignment source; its effort is added once, and unreported sources make the total unknown.
+
+Report files contain parent IDs, worker session identity and task timing values, not task text or transcripts. They must remain under repository `var/`. A report binds to its first exporting worker session. Missing files, identity mismatches and malformed data produce tool errors; missing worker exports remain unknown rather than zero. Legacy/manual delegations without an AgentCreate report remain unknown. Existing imported totals survive reload and pane closure; newer worker exports only affect the parent after another explicit import. Older extension versions cannot show these imported totals. No polling, background timing registry, or changes to Herdr/pi-loop-monitor are involved.
 
 ### Completion percentages
 
@@ -149,7 +172,7 @@ These are simple Herdr CLI wrappers in pi-tasks, with no pi-herdr-agents depende
 
 | Tool | Purpose |
 | --- | --- |
-| `AgentCreate` | Create an unfocused tab, start Pi and register monitoring; return paneId/tabId/monitorId plus a prepared assignment. No prompt is sent. |
+| `AgentCreate` | Create a timing descriptor, an unfocused tab, start Pi and register monitoring; return paneId/tabId/monitorId/reportPath plus a prepared assignment. No prompt is sent. |
 | `AgentList` | `herdr agent list` (includes unrelated agents). |
 | `AgentStatus` | `herdr agent get <paneId>`. |
 | `AgentOutput` | `herdr pane read`; 50 trailing lines by default, up to 200. |
@@ -174,7 +197,7 @@ AgentCreate({
 })
 ```
 
-Replace placeholders using the existing implement path convention and model-routing-policy. The wrapper passes taskDir to the prepared worker assignment; it does not create folders or verify the running model. It adds parent context and worker-local tracking instructions without granting extra permissions.
+Replace placeholders using the existing implement path convention and model-routing-policy. The wrapper requires taskDir to exist inside the repository's canonical var/ tree. It creates a timing descriptor there but does not create folders or verify the running model. It adds parent context, worker-local tracking and timing-export instructions without granting extra permissions.
 
 AgentCreate returns `assignmentSent: false`. Confirm MonitorList shows `Herdr signal subscription ready for <paneId>`, then call `AgentSend({ paneId, message: assignment })` using the returned assignment. Do not add a second monitor. Follow-up messages use that same paneId and existing subscription.
 

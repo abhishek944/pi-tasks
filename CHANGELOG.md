@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.1 - 2026-10-23
+
+- Automatically mark the parent delegated task blocked after AgentCreate successfully starts the worker and registers monitoring, preserving its completion estimate and delegate links. Clarify parent and worker task status guidance.
+
 ## 0.12.0 - 2026-10-23
 
 - Add measured active task time using `TodoUpdate working=true|false`, timestamp-based accumulated intervals, and automatic pauses for task switches, idle periods, blocking user prompts, aborts, and task lifecycle changes. Saved totals follow the session branch and restore paused without counting offline time.

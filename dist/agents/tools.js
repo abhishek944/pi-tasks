@@ -34,7 +34,7 @@ export function registerAgentTools(pi, state) {
     };
     pi.registerTool({
         name: "AgentCreate", label: "AgentCreate",
-        description: "Wrap Herdr tab creation, Pi startup and MonitorCreate. Returns actual paneId/tabId/monitorId and a prepared assignment; automatically links the task's delegate badge. Does NOT send work: confirm MonitorList shows subscription ready, then AgentSend the returned assignment. onSignal wakes the parent for worker state changes; optional onDone handles monitor termination, not task completion. No private agent registry, automatic recovery or process checks.",
+        description: "Wrap Herdr tab creation, Pi startup and MonitorCreate. Returns actual paneId/tabId/monitorId and a prepared assignment; automatically links the task's delegate badge and marks the parent task blocked while awaiting the worker. Does NOT send work: confirm MonitorList shows subscription ready, then AgentSend the returned assignment. onSignal wakes the parent for worker state changes; optional onDone handles monitor termination, not task completion. No private agent registry, automatic recovery or process checks.",
         promptGuidelines: ["Prefer these agent tools over CLI for supported operations; use Herdr CLI only for missing capabilities.", "Choose explicit provider/model/thinking/Fast through model-routing-policy. Create only authorized agents, never in /ask or /btw.", "After AgentCreate, confirm MonitorList shows the pane subscription ready before AgentSend. Do not add a duplicate monitor. Read actual output/files before completing tasks."],
         parameters: Type.Object({
             workId: Type.String({ pattern: "^W[1-9][0-9]*$" }), taskId: Type.String({ pattern: "^T[1-9][0-9]*$" }),
@@ -76,7 +76,7 @@ export function registerAgentTools(pi, state) {
                 const currentTodo = state.getTodo(params.taskId);
                 if (!currentTodo || currentTodo.workId !== params.workId)
                     throw new Error("The parent task is no longer available for linking.");
-                state.updateTodo(params.taskId, { taskInfo: withPaneLink(currentTodo.taskInfo, pane.pane_id, watched.monitorId) });
+                state.updateTodo(params.taskId, { status: "blocked", taskInfo: withPaneLink(currentTodo.taskInfo, pane.pane_id, watched.monitorId) });
                 const assignment = `Parent session ${ctx.sessionManager.getSessionId()}, work ${params.workId}, task ${params.taskId}. Exact parentTaskDir: ${params.taskDir}. Read global implement and applicable skills. Obtain your own PI_SESSION_ID through your shell, establish your own Work and active Todo using WorkList/TodoList and create/update tools before executing, keep them current, and return your IDs, nested task artifact path, changed files, checks and blockers. Parent IDs are context, not shared records. This handoff grants no additional permissions.\n\n${params.assignment}`;
                 return result("AgentCreate", { ...handles, taskDir: params.taskDir, assignment, assignmentSent: false,
                     next: "Confirm MonitorList shows subscription ready, then AgentSend this assignment to the returned paneId." });

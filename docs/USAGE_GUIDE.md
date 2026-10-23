@@ -55,7 +55,7 @@ Every subagent must create or resume its own session-local Work and Todos before
 
 Works are collections with no status. Tasks use only `active`, `blocked`, `completed`, and `cancelled`. New tasks default to `active`; saved legacy task statuses `planned` and `pending` restore as active but are no longer accepted by tools. Old Work statuses are ignored during replay; no saved history is rewritten.
 
-Use `blocked` immediately when a task cannot proceed until another agent produces output, a review finishes, an external response arrives, the user responds, permission is granted, or another obstacle is resolved. Record which dependency it awaits and what will unblock it in `taskInfo`; retain its current completion estimate. Tasks actually executing in another agent may remain active, but downstream tasks waiting for that output are blocked.
+Use `blocked` immediately when a task cannot proceed until another agent produces output, a review finishes, an external response arrives, the user responds, permission is granted, or another obstacle is resolved. Record which dependency it awaits and what will unblock it in `taskInfo`; retain its current completion estimate. Parent delegated tasks stay blocked while awaiting worker output; the worker's own local tasks may be active. AgentCreate automatically blocks the parent task after successful creation, retaining its progress. For manual delegation, mark the parent task blocked explicitly.
 
 When the dependency resolves and work resumes, mark the affected tasks active. Do not assign status to the parent Work. To cancel the whole collection, cancel its remaining tasks explicitly. Neither blocked status nor changing it schedules a wake automatically; use the appropriate monitor or event when an automatic notification is needed.
 
@@ -140,7 +140,7 @@ The task covers the panel label and its documentation.
 
 ### Delegate pane links
 
-`[delegate]` describes the ownership decision; it does not launch an agent. AgentCreate automatically adds `herdr-pane: <paneId>` and `herdr-monitor: <monitorId>` lines to the parent task's existing details. TodoUpdate keeps those lines when both old and new ownership stay delegate and the new details do not supply replacement link metadata. Explicit metadata takes precedence; changing ownership or AgentClose can clear the link. Set `herdr-pane: none` to explicitly unlink without changing ownership. No new task schema or private agent registry is added. AgentClose clears matching links without changing ownership or completion.
+`[delegate]` describes the ownership decision; it does not launch an agent. After successful agent startup and monitor creation, AgentCreate automatically marks the parent task blocked and adds `herdr-pane: <paneId>` and `herdr-monitor: <monitorId>` lines to its existing details. The completion estimate is retained; earlier creation failures do not change its status. TodoUpdate keeps those lines when both old and new ownership stay delegate and the new details do not supply replacement link metadata. Explicit metadata takes precedence; changing ownership or AgentClose can clear the link. Set `herdr-pane: none` to explicitly unlink without changing ownership. No new task schema or private agent registry is added. AgentClose clears matching links without changing ownership or completion.
 
 ## Agent tools
 

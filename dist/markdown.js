@@ -12,7 +12,7 @@ export function formatWorksMarkdown(works) {
             continue;
         }
         for (const todo of work.tasks) {
-            lines.push(`#### ${todo.taskId} — ${escapeMarkdownInline(safeSingleLine(todo.taskName))}`, "", `**Status:** ${todo.status}`, `**Completion:** ${formatCompletion(taskCompletion(todo))}`, `**Time:** ${formatTime(taskTime(todo))}${todo.workingSince === undefined ? "" : " (running)"}`, "", markdownBody(todo.taskInfo), "");
+            lines.push(`#### ${todo.taskId} — ${escapeMarkdownInline(safeSingleLine(todo.taskName))}`, "", `**Status:** ${todo.status}`, ...(todo.status === "blocked" ? ["", "**Blocked reason:**", "", markdownBody(todo.blockedReason ?? "No reason recorded."), ""] : []), `**Completion:** ${formatCompletion(taskCompletion(todo))}`, `**Time:** ${formatTime(taskTime(todo))}${todo.workingSince === undefined ? "" : " (running)"}`, "", markdownBody(todo.taskInfo), "");
         }
     }
     return `${lines.join("\n").trimEnd()}\n`;

@@ -55,7 +55,7 @@ Every subagent must create or resume its own session-local Work and Todos before
 
 Works are collections with no status. Tasks use only `active`, `blocked`, `completed`, and `cancelled`. New tasks default to `active`; saved legacy task statuses `planned` and `pending` restore as active but are no longer accepted by tools. Old Work statuses are ignored during replay; no saved history is rewritten.
 
-Use `blocked` immediately when a task cannot proceed until another agent produces output, a review finishes, an external response arrives, the user responds, permission is granted, or another obstacle is resolved. Record which dependency it awaits and what will unblock it in `taskInfo`; retain its current completion estimate. Parent delegated tasks stay blocked while awaiting worker output; the worker's own local tasks may be active. AgentCreate automatically blocks the parent task after successful creation, retaining its progress. For manual delegation, mark the parent task blocked explicitly.
+Use `blocked` immediately when a task cannot proceed until another agent produces output, a review finishes, an external response arrives, the user responds, permission is granted, or another obstacle is resolved. Supply `blockedReason` when creating a blocked task or entering blocked status: explain which dependency it awaits and what will unblock it. Retain its current completion estimate. Other blocked edits preserve the reason; leaving blocked clears it. Older tasks without a reason show “No reason recorded.” Parent delegated tasks stay blocked while awaiting worker output; the worker's own local tasks may be active. AgentCreate automatically blocks the parent task after successful creation, retaining its progress. For manual delegation, mark the parent task blocked explicitly.
 
 When the dependency resolves and work resumes, mark the affected tasks active. Do not assign status to the parent Work. To cancel the whole collection, cancel its remaining tasks explicitly. Neither blocked status nor changing it schedules a wake automatically; use the appropriate monitor or event when an automatic notification is needed.
 
@@ -73,7 +73,7 @@ This is off by default and requires Pi 1.2.0+. Add the following to global `~/.p
 }
 ```
 
-Send a normal prompt to start. After success or failure, if any task across all Works on the current session branch is active, the agent receives a message to continue and verify it. Legacy planned/pending task statuses restore as active. Empty Works and blocked, completed, or cancelled tasks do not cause another continuation. Record genuine blockers and resume conditions in taskInfo before handing off.
+Send a normal prompt to start. After success or failure, if any task across all Works on the current session branch is active, the agent receives a message to continue and verify it. Legacy planned/pending task statuses restore as active. Empty Works and blocked, completed, or cancelled tasks do not cause another continuation. Record genuine blockers and resume conditions in `blockedReason` when entering blocked status before handing off.
 
 Press Escape/abort to stop. The extension will not restart from a monitor wake or another extension's message; send a new main prompt when you want it to resume. Failed runs do not disarm continuation: after native retries, unfinished records request another run. Repeated provider failures can therefore keep consuming tokens with no configured limit. Reloading or navigating session branches does not silently resume unfinished work.
 
@@ -100,6 +100,7 @@ TodoList workId="W1"
 TodoList status="active"
 TodoList workId="W1" limit=10
 TodoUpdate taskId="T1" status="active" completionPercent=40 taskInfo="Inspection is complete; implementation and verification remain."
+TodoUpdate taskId="T1" status="blocked" blockedReason="Waiting for the review findings. Resume when the reviewer returns them."
 TodoUpdate taskId="T1" status="completed" taskInfo="Detailed verified outcome..."
 TodoUpdate taskId="T2" completionPercent=null taskInfo="The scope changed; the previous estimate is no longer reliable."
 TodoDelete taskId="T1"
@@ -201,8 +202,11 @@ Run `/works` for full details. Its top border mirrors repository-wide Git status
 - `o`: open the current repository/session directory in Cursor
 - `d`: open the selected task's linked delegated agent
 - `m`: minimize or maximize the dashboard
-- Fullscreen left click: activate Copy, Open, Minimize, or Maximize
-- Configured Up/Down keys: select
-- Configured Page Up/Page Down keys: scroll long details
-- Configured confirmation key: show or hide detailed information
-- Configured cancel key or Ctrl+C: close
+- Fullscreen left click: activate header actions, or click a task/work row to open its full details. Clicking a linked delegate badge still opens its agent.
+- Configured Up/Down keys: select in the list; scroll in details
+- Configured Page Up/Page Down keys: page through the list or scroll long details
+- Configured confirmation key: open the selected record's full detail view
+- Back to works or configured cancel key: return from details to the task list without losing your place
+- Configured cancel key from the task list: close `/works`
+
+The full task view shows its name, parent work, status, completion, measured time and full task information. Blocked tasks show **Reason:** followed by the blocker text on the same line, wrapping as needed, before the task information. The mouse wheel scrolls long details. Escape from details returns to the task list; Escape again closes the dashboard.

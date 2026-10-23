@@ -30,6 +30,7 @@ export function formatWorksMarkdown(works: WorkWithTodos[]): string {
         `#### ${todo.taskId} — ${escapeMarkdownInline(safeSingleLine(todo.taskName))}`,
         "",
         `**Status:** ${todo.status}`,
+        ...(todo.status === "blocked" ? ["", "**Blocked reason:**", "", markdownBody(todo.blockedReason ?? "No reason recorded."), ""] : []),
         `**Completion:** ${formatCompletion(taskCompletion(todo))}`,
         `**Time:** ${formatTime(taskTime(todo))}${todo.workingSince === undefined ? "" : " (running)"}`,
         "",

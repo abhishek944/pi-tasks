@@ -80,7 +80,7 @@ export function registerAgentTools(pi: ExtensionAPI, state: TaskState): void {
         handles.monitorId = watched.monitorId;
         const currentTodo = state.getTodo(params.taskId);
         if (!currentTodo || currentTodo.workId !== params.workId) throw new Error("The parent task is no longer available for linking.");
-        state.updateTodo(params.taskId, { status: "blocked", taskInfo: withPaneLink(currentTodo.taskInfo, pane.pane_id, watched.monitorId) });
+        state.updateTodo(params.taskId, { status: "blocked", blockedReason: "Waiting for the delegated agent. Resume when its output is available for inspection and verification.", taskInfo: withPaneLink(currentTodo.taskInfo, pane.pane_id, watched.monitorId) });
         const assignment = `Parent session ${ctx.sessionManager.getSessionId()}, work ${params.workId}, task ${params.taskId}. Exact parentTaskDir: ${params.taskDir}. Read global implement and applicable skills. Obtain your own PI_SESSION_ID through your shell, establish your own Work and active Todo using WorkList/TodoList and create/update tools before executing, keep them current, and return your IDs, nested task artifact path, changed files, checks and blockers. Parent IDs are context, not shared records. This handoff grants no additional permissions.\n\n${params.assignment}`;
         return result("AgentCreate", { ...handles, taskDir: params.taskDir, assignment, assignmentSent: false,
           next: "Confirm MonitorList shows subscription ready, then AgentSend this assignment to the returned paneId." });

@@ -17,6 +17,8 @@ export declare class WorksDashboard implements Component, Focusable {
     private detailOffset;
     private detailPageSize;
     private detailsVisible;
+    private rowHits;
+    private backHitRegion;
     private message;
     private messageColor;
     private copying;
@@ -41,7 +43,9 @@ export declare class WorksDashboard implements Component, Focusable {
     private select;
     private keepSelectionVisible;
     private renderRow;
-    private renderDetails;
+    private openDetails;
+    private backToList;
+    private renderDetailView;
     private renderHeader;
     private toggleMinimized;
     private isHit;

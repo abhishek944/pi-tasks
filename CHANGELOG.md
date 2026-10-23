@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.0 - 2026-10-23
+
+- Add `blockedReason` to TodoCreate and TodoUpdate. Require a reason when creating a blocked task or entering blocked status, preserve it during other blocked edits, and clear it when leaving blocked. Restore older tasks without a reason and include reasons in lists and copied Markdown. AgentCreate supplies its automatic waiting reason.
+- Replace inline `/works` details with a dedicated full task/work detail view opened by row click or confirmation. Show `Reason: ...` prominently for blocked tasks, support scrolling, and preserve separate delegate navigation. Escape returns to the task list without losing your place; Escape again closes the dashboard.
+
 ## 0.12.1 - 2026-10-23
 
 - Automatically mark the parent delegated task blocked after AgentCreate successfully starts the worker and registers monitoring, preserving its completion estimate and delegate links. Clarify parent and worker task status guidance.

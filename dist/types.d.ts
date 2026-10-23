@@ -12,6 +12,8 @@ export interface Todo {
     taskName: string;
     taskInfo: string;
     status: TodoStatus;
+    /** Current obstacle and resume condition; cleared when leaving blocked. */
+    blockedReason?: string | null;
     completionPercent?: number | null;
     /** Accumulated measured time; missing/null means historical time is unknown. */
     elapsedMs?: number | null;
@@ -49,7 +51,7 @@ export type TaskEvent = {
     type: "todo-updated";
     at: number;
     taskId: string;
-    patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status" | "completionPercent">>;
+    patch: Partial<Pick<Todo, "taskName" | "taskInfo" | "status" | "blockedReason" | "completionPercent">>;
 } | {
     version: 1;
     type: "todo-time";

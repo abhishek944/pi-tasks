@@ -6,7 +6,7 @@ import { openRepository } from "../open-repository.js";
 import { formatCompletion, taskCompletion, workCompletion } from "../progress.js";
 import { safeMultiline, safeSingleLine } from "../text.js";
 import { formatTime, taskTime, workTime } from "../time.js";
-import { border, delegateHitRegion, frame, gitBorder, metricsColumn, metricsHeader, ownerBadge, progressName, recordId, rule, todoIcon } from "./panel.js";
+import { border, delegateHitRegion, frame, gitBorder, metricsColumn, metricsHeader, ownerBadge, recordId, rule, todoIcon } from "./panel.js";
 const CHROME_LINES = 9;
 export class WorksDashboard {
     tui;
@@ -22,7 +22,9 @@ export class WorksDashboard {
     scrollOffset = 0;
     detailOffset = 0;
     detailPageSize = 1;
-    detailsVisible = true;
+    detailsVisible = false;
+    rowHits = [];
+    backHitRegion;
     message = "Ready. Select an item; Escape closes.";
     messageColor = "warning";
     copying = false;
@@ -54,10 +56,22 @@ export class WorksDashboard {
     }
     render(width) {
         this.delegateHits = [];
+        this.rowHits = [];
+        this.backHitRegion = undefined;
+        this.copyHitRegion = undefined;
+        this.openHitRegion = undefined;
+        this.toggleHitRegion = undefined;
         const dialogWidth = Math.max(1, width);
         const innerWidth = Math.max(1, dialogWidth - 2);
         const works = this.state.listWorks();
         const todos = works.flatMap((work) => work.tasks);
+        const items = this.items(works);
+        this.syncSelection(items);
+        const selected = items.find((item) => item.key === this.selectedKey);
+        if (this.detailsVisible && selected)
+            return this.renderDetailView(selected, innerWidth);
+        if (!selected)
+            this.detailsVisible = false;
         const header = this.renderHeader(innerWidth, works.length, todos.length);
         if (this.minimized) {
             return [
@@ -66,36 +80,24 @@ export class WorksDashboard {
                 border(innerWidth, "bottom", this.theme),
             ];
         }
-        const items = this.items(works);
-        this.syncSelection(items);
         const terminalRows = this.tui.terminal.rows || process.stdout.rows || 30;
         const dialogHeight = Math.max(8, Math.min(36, Math.floor(terminalRows * 0.82)));
         const activeTodos = todos.filter((todo) => todo.status === "active").length;
         const completedTodos = todos.filter((todo) => todo.status === "completed").length;
         const summary = `${works.length} works · ${activeTodos} todos active · ${completedTodos}/${todos.length} completed · session scoped`;
-        const bodyHeight = Math.max(0, dialogHeight - CHROME_LINES);
-        const detailBudget = this.detailsVisible ? Math.max(0, Math.floor(bodyHeight / 2)) : 0;
-        const details = this.renderDetails(items, innerWidth, detailBudget);
-        const listHeight = Math.max(0, bodyHeight - details.length);
+        const listHeight = Math.max(0, dialogHeight - CHROME_LINES);
         if (listHeight > 0)
             this.keepSelectionVisible(items, listHeight);
         const rows = items.slice(this.scrollOffset, this.scrollOffset + listHeight).map((item, index) => this.renderRow(item, innerWidth, 5 + index));
         while (rows.length < listHeight)
             rows.push("");
-        const selected = items.find((item) => item.key === this.selectedKey);
-        if (selected?.kind === "todo" && details[1] !== undefined) {
-            const start = visibleWidth(`${recordId(selected.todo.taskId, this.theme)} `);
-            const hit = delegateHitRegion(delegateLink(selected.todo.taskInfo), start, details[1], 6 + listHeight);
-            if (hit)
-                this.delegateHits.push(hit);
-        }
         return [
             gitBorder(innerWidth, this.theme, this.git.getSnapshot()),
             frame(header, innerWidth, this.theme),
             frame(this.theme.fg("dim", summary), innerWidth, this.theme),
             rule(innerWidth, this.theme),
             frame(metricsHeader(innerWidth, this.theme), innerWidth, this.theme),
-            ...[...rows, ...details].map((line) => frame(line, innerWidth, this.theme)),
+            ...rows.map((line) => frame(line, innerWidth, this.theme)),
             rule(innerWidth, this.theme),
             frame(this.theme.fg(this.messageColor, truncateToWidth(this.message, innerWidth, "")), innerWidth, this.theme),
             frame(this.renderFooter(innerWidth), innerWidth, this.theme),
@@ -109,7 +111,28 @@ export class WorksDashboard {
         this.syncSelection(items);
         const index = Math.max(0, items.findIndex((item) => item.key === this.selectedKey));
         if (this.keybindings.matches(data, "tui.select.cancel")) {
-            this.close();
+            if (this.detailsVisible)
+                this.backToList();
+            else
+                this.close();
+            return;
+        }
+        if (this.detailsVisible) {
+            if (this.keybindings.matches(data, "tui.select.up"))
+                this.detailOffset = Math.max(0, this.detailOffset - 1);
+            else if (this.keybindings.matches(data, "tui.select.down"))
+                this.detailOffset += 1;
+            else if (this.keybindings.matches(data, "tui.select.pageUp"))
+                this.detailOffset = Math.max(0, this.detailOffset - this.detailPageSize);
+            else if (this.keybindings.matches(data, "tui.select.pageDown"))
+                this.detailOffset += this.detailPageSize;
+            else if (matchesKey(data, "d")) {
+                const selected = items.find((item) => item.key === this.selectedKey);
+                const link = selected?.kind === "todo" ? delegateLink(selected.todo.taskInfo) : undefined;
+                if (link)
+                    void this.openLinkedDelegate(link);
+            }
+            this.tui.requestRender();
             return;
         }
         if (matchesKey(data, "c")) {
@@ -146,28 +169,31 @@ export class WorksDashboard {
             this.select(items, index + 1);
         }
         else if (this.keybindings.matches(data, "tui.select.pageUp")) {
-            this.detailOffset = Math.max(0, this.detailOffset - this.detailPageSize);
-            this.message = "Moved detail view up.";
+            this.select(items, index - 10);
         }
         else if (this.keybindings.matches(data, "tui.select.pageDown")) {
-            this.detailOffset += this.detailPageSize;
-            this.message = "Moved detail view down.";
+            this.select(items, index + 10);
         }
         else if (this.keybindings.matches(data, "tui.select.confirm")) {
-            this.detailsVisible = !this.detailsVisible;
-            this.detailOffset = 0;
-            this.message = this.detailsVisible ? "Details shown." : "Details hidden.";
+            if (items.length > 0)
+                this.openDetails();
         }
         this.tui.requestRender();
     }
     handleMouse(event) {
         if (this.disposed)
             return undefined;
+        if (this.detailsVisible && event.type === "wheel" && event.wheelDelta) {
+            this.detailOffset = Math.max(0, this.detailOffset + Math.sign(event.wheelDelta) * 3);
+            return { handled: true, focus: true, render: true };
+        }
         if (event.type === "press" && event.button === "left") {
             const delegateHit = this.delegateHits.some((region) => event.y === region.y && this.isHit(event.x, region));
             const headerHit = event.y === 1 && [this.copyHitRegion, this.openHitRegion, this.toggleHitRegion].some((region) => this.isHit(event.x, region));
             // Own the gesture so Pi does not turn repeated control clicks into text selection.
-            if (delegateHit || headerHit)
+            const rowHit = this.rowHits.some((row) => row.y === event.y);
+            const backHit = event.y === 1 && this.isHit(event.x, this.backHitRegion);
+            if (delegateHit || headerHit || rowHit || backHit)
                 return { handled: true };
         }
         // Legacy mouse releases omit the button; Pi still normalizes the gesture as a click.
@@ -176,6 +202,16 @@ export class WorksDashboard {
         const hit = this.delegateHits.find((region) => event.y === region.y && this.isHit(event.x, region));
         if (hit) {
             void this.openLinkedDelegate(hit.link);
+            return { handled: true, focus: true, render: true };
+        }
+        if (event.y === 1 && this.isHit(event.x, this.backHitRegion)) {
+            this.backToList();
+            return { handled: true, focus: true, render: true };
+        }
+        const row = this.rowHits.find((candidate) => candidate.y === event.y);
+        if (row && event.x > 0) {
+            this.selectedKey = row.key;
+            this.openDetails();
             return { handled: true, focus: true, render: true };
         }
         if (event.y !== 1)
@@ -216,6 +252,8 @@ export class WorksDashboard {
             return;
         this.selectedKey = items[0]?.key;
         this.scrollOffset = 0;
+        this.detailsVisible = false;
+        this.detailOffset = 0;
     }
     select(items, index) {
         if (items.length === 0)
@@ -232,6 +270,7 @@ export class WorksDashboard {
         this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, Math.max(0, items.length - height)));
     }
     renderRow(item, width, y) {
+        this.rowHits.push({ y, key: item.key });
         const selected = item.key === this.selectedKey;
         const prefix = selected ? this.theme.fg("accent", "▶ ") : "  ";
         if (item.kind === "work") {
@@ -249,45 +288,76 @@ export class WorksDashboard {
             this.delegateHits.push(hit);
         return line;
     }
-    renderDetails(items, width, budget) {
-        if (!this.detailsVisible || budget === 0)
-            return [];
-        const item = items.find((candidate) => candidate.key === this.selectedKey);
-        if (!item)
-            return [this.theme.fg("muted", "No works or todos in this session.")].slice(0, budget);
-        let heading;
-        if (item.kind === "work") {
-            const lead = `${recordId(item.work.workId, this.theme)} `;
-            heading = `${lead}${progressName(item.work.workName, workCompletion(item.work), width - visibleWidth(lead))}`;
+    openDetails() {
+        this.detailsVisible = true;
+        this.detailOffset = 0;
+        this.tui.requestRender();
+    }
+    backToList() {
+        this.detailsVisible = false;
+        this.detailOffset = 0;
+        this.message = "Select a task; Enter opens details. Escape closes.";
+        this.messageColor = "warning";
+        this.tui.requestRender();
+    }
+    renderDetailView(item, width) {
+        const rows = this.tui.terminal.rows || process.stdout.rows || 30;
+        const height = Math.max(8, Math.min(36, Math.floor(rows * 0.82)));
+        const budget = Math.max(1, height - 6);
+        const back = truncateToWidth(this.theme.fg("accent", this.theme.underline("[← Back to works]")), width, "");
+        this.backHitRegion = { start: 1, end: 1 + visibleWidth(back) };
+        const task = item.kind === "todo" ? item.todo : undefined;
+        const link = task ? delegateLink(task.taskInfo) : undefined;
+        const label = task
+            ? `Task details · ${recordId(task.taskId, this.theme)} ${ownerBadge(task.taskInfo, this.theme, Boolean(link))}`
+            : `Work details · ${recordId(item.work.workId, this.theme)}`;
+        const available = Math.max(0, width - visibleWidth(back) - 1);
+        const shownLabel = truncateToWidth(label, available, "");
+        const gap = " ".repeat(Math.max(0, width - visibleWidth(back) - visibleWidth(shownLabel)));
+        const header = `${back}${gap}${shownLabel}`;
+        if (task) {
+            const ownerStart = visibleWidth(`${back}${gap}Task details · ${recordId(task.taskId, this.theme)} `);
+            const hit = delegateHitRegion(link, ownerStart, header, 1);
+            if (hit)
+                this.delegateHits.push(hit);
+        }
+        const contentWidth = Math.max(1, width - 4);
+        const wrap = (text) => text.split("\n").flatMap((line) => wrapTextWithAnsi(line || " ", contentWidth));
+        const name = task?.taskName ?? item.work.workName;
+        const lines = ["", ...wrap(this.theme.bold(safeSingleLine(name))), ""];
+        if (task) {
+            lines.push(...wrap(this.theme.fg("muted", `${recordId(item.work.workId, this.theme)} ${safeSingleLine(item.work.workName)}`)), "");
+            const status = `${todoIcon(task.status, this.theme)} ${task.status}`;
+            lines.push(...wrap(`${status} · ${formatCompletion(taskCompletion(task))} complete · Time: ${formatTime(taskTime(task))}`), "");
+            if (task.status === "blocked") {
+                const reasonWidth = Math.max(1, contentWidth - 2);
+                for (const line of safeMultiline(`Reason: ${task.blockedReason ?? "No reason recorded."}`)) {
+                    lines.push(...wrapTextWithAnsi(line || " ", reasonWidth).map((part) => this.theme.fg("warning", `│ ${part}`)));
+                }
+                lines.push("");
+            }
         }
         else {
-            const taskName = safeSingleLine(item.todo.taskName);
-            const taskLead = `${recordId(item.todo.taskId, this.theme)} ${ownerBadge(item.todo.taskInfo, this.theme, Boolean(delegateLink(item.todo.taskInfo)))} `;
-            const workName = safeSingleLine(item.work.workName);
-            const taskProgress = formatCompletion(taskCompletion(item.todo));
-            const workProgress = formatCompletion(workCompletion(item.work));
-            const workId = recordId(item.todo.workId, this.theme);
-            const fixed = `${taskLead} · ${taskProgress} · ${item.todo.status} · ${workId}  · ${workProgress}`;
-            const available = Math.max(0, width - visibleWidth(fixed));
-            const taskWidth = Math.min(visibleWidth(taskName), available - Math.min(visibleWidth(workName), Math.floor(available / 2)));
-            const shownTask = truncateToWidth(taskName, taskWidth, "…");
-            const shownWork = truncateToWidth(workName, available - taskWidth, "…");
-            heading = `${taskLead}${shownTask} · ${taskProgress} · ${item.todo.status} · ${workId} ${shownWork} · ${workProgress}`;
+            lines.push(...wrap(`${formatCompletion(workCompletion(item.work))} complete · Time (task effort): ${formatTime(workTime(item.work))}`), "");
         }
-        const info = item.kind === "work" ? item.work.workInfo : item.todo.taskInfo;
-        const infoLines = safeMultiline(info).flatMap((line) => wrapTextWithAnsi(this.theme.fg("dim", line || " "), width));
-        const contentBudget = Math.max(0, budget - 3);
-        this.detailPageSize = Math.max(1, contentBudget);
-        const maxOffset = Math.max(0, infoLines.length - contentBudget);
-        this.detailOffset = Math.min(this.detailOffset, maxOffset);
-        const shown = infoLines.slice(this.detailOffset, this.detailOffset + contentBudget);
-        const position = infoLines.length > shown.length ? ` · lines ${this.detailOffset + 1}-${this.detailOffset + shown.length}/${infoLines.length}` : "";
+        lines.push(this.theme.fg("accent", this.theme.bold(task ? "Task details" : "Work details")));
+        lines.push(...safeMultiline(task?.taskInfo ?? item.work.workInfo).flatMap(wrap));
+        this.detailPageSize = budget;
+        this.detailOffset = Math.max(0, Math.min(this.detailOffset, Math.max(0, lines.length - budget)));
+        const shown = lines.slice(this.detailOffset, this.detailOffset + budget);
+        while (shown.length < budget)
+            shown.push("");
+        const position = lines.length > budget ? ` · ${this.detailOffset + 1}-${Math.min(lines.length, this.detailOffset + budget)}/${lines.length}` : "";
+        const footer = `↑/↓ scroll · PgUp/PgDn page · Esc back to works${position}`;
         return [
-            this.theme.fg("accent", this.theme.bold(`DETAILS${position}`)),
-            truncateToWidth(heading, width, ""),
-            this.theme.fg("dim", `Time${item.kind === "work" ? " (task effort)" : ""}: ${formatTime(item.kind === "work" ? workTime(item.work) : taskTime(item.todo))}`),
-            ...shown,
-        ].slice(0, budget);
+            gitBorder(width, this.theme, this.git.getSnapshot()),
+            frame(header, width, this.theme),
+            rule(width, this.theme),
+            ...shown.map((line) => frame(`  ${line}`, width, this.theme)),
+            rule(width, this.theme),
+            frame(truncateToWidth(this.theme.fg("muted", footer), width, ""), width, this.theme),
+            border(width, "bottom", this.theme),
+        ];
     }
     renderHeader(width, workCount, todoCount) {
         const titleText = this.minimized
@@ -399,7 +469,7 @@ export class WorksDashboard {
         }
     }
     renderFooter(width) {
-        const text = "C copy all · O open Cursor · D open delegate · M minimize · configured ↑/↓ select · PgUp/PgDn scroll details · confirm toggles · cancel closes";
+        const text = "↑/↓ select · Enter details · Esc close · C copy · O Cursor · D delegate · M minimize";
         return truncateToWidth(this.theme.fg("muted", text), width, "");
     }
 }

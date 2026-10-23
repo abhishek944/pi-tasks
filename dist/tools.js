@@ -7,9 +7,12 @@ import { formatTime, taskTime, workTime } from "./time.js";
 import { renderTaskCall, renderTaskResult, taskResult } from "./tool-result.js";
 import { areTrackingToolsActive } from "./tracking.js";
 const StatusSchema = StringEnum(["active", "blocked", "completed", "cancelled"]);
-const STATUS_GUIDANCE = "New tasks default to active. Use blocked immediately when the next step must wait for agent output, review, an external response, user input, permission, or another obstacle. Record the dependency and resume condition in taskInfo and retain progress. Return blocked tasks to active when the dependency resolves and work resumes. Works are collections and have no status.";
+const STATUS_GUIDANCE = "New tasks default to active. Use blocked immediately when the next step must wait for agent output, review, an external response, user input, permission, or another obstacle. Supply blockedReason when creating a blocked task or moving a task to blocked: explain the obstacle and what will allow work to resume. Unrelated blocked edits preserve the reason; leaving blocked clears it. Retain progress. Return blocked tasks to active when the dependency resolves and work resumes. Works are collections and have no status.";
 const CompletionSchema = Type.Union([Type.Integer({ minimum: 0, maximum: 100 }), Type.Null()], {
     description: "AI-reported approximate task completion, not elapsed time or a status-to-percentage mapping. Use null for unknown; reserve 100 for verified completed status. Work progress is the equal average of non-cancelled tasks.",
+});
+const BlockedReasonSchema = Type.Union([Type.String({ minLength: 1, maxLength: 10_000 }), Type.Null()], {
+    description: "Required when creating a blocked task or entering blocked status. Explain what is blocking progress and what allows work to resume. Omission preserves the current reason while blocked; leaving blocked clears it automatically.",
 });
 const NameSchema = Type.String({ minLength: 1, maxLength: 240 });
 const DETAILS_GUIDANCE = "Write workInfo and taskInfo in normal prose with full sentences and spaces between words. Conversational brevity modes must not compress stored records or concatenate words.";
@@ -101,11 +104,12 @@ export function registerTaskTools(pi, state) {
             workId: Type.String(),
             taskName: NameSchema,
             taskInfo: InfoSchema,
+            blockedReason: Type.Optional(BlockedReasonSchema),
             status: Type.Optional(StatusSchema),
             completionPercent: Type.Optional(CompletionSchema),
         }, { additionalProperties: false }),
         execute(_id, params) {
-            const todo = state.createTodo(params.workId, params.taskName, params.taskInfo, params.status, params.completionPercent);
+            const todo = state.createTodo(params.workId, params.taskName, params.taskInfo, params.status, params.completionPercent, params.blockedReason);
             return Promise.resolve(taskResult(`Created todo ${todo.taskId} under ${todo.workId}: ${todo.taskName} · ${formatCompletion(taskCompletion(todo))} [${todo.status}]`, "todo-create", { taskId: todo.taskId, workId: todo.workId, completionPercent: taskCompletion(todo) }));
         },
         renderCall: renderTaskCall("TodoCreate"),
@@ -140,6 +144,7 @@ export function registerTaskTools(pi, state) {
             taskId: Type.String(),
             taskName: Type.Optional(NameSchema),
             taskInfo: Type.Optional(InfoSchema),
+            blockedReason: Type.Optional(BlockedReasonSchema),
             status: Type.Optional(StatusSchema),
             completionPercent: Type.Optional(CompletionSchema),
             working: Type.Optional(Type.Boolean({ description: "Select this active owner: self task for automatic timing, or pause it. Selection switches away from the previously timed task. No timestamps or duration estimates are accepted." })),
@@ -148,7 +153,7 @@ export function registerTaskTools(pi, state) {
             if (params.working !== undefined && !areTrackingToolsActive(pi))
                 throw new Error("Task timing is available only in tracked main-conversation work, not /ask or /btw.");
             const taskInfo = params.taskInfo === undefined ? undefined : preservePaneLink(state.getTodo(params.taskId)?.taskInfo ?? "", params.taskInfo);
-            const todo = state.updateTodo(params.taskId, { taskName: params.taskName, taskInfo, status: params.status, completionPercent: params.completionPercent, working: params.working });
+            const todo = state.updateTodo(params.taskId, { taskName: params.taskName, taskInfo, status: params.status, blockedReason: params.blockedReason, completionPercent: params.completionPercent, working: params.working });
             return Promise.resolve(taskResult(`Updated todo ${todo.taskId}: ${todo.taskName} · ${formatCompletion(taskCompletion(todo))} · ${formatTime(taskTime(todo))}${todo.workingSince === undefined ? "" : " running"} [${todo.status}]`, "todo-update", { taskId: todo.taskId, workId: todo.workId, completionPercent: taskCompletion(todo), elapsedMs: taskTime(todo), working: todo.workingSince !== undefined }));
         },
         renderCall: renderTaskCall("TodoUpdate"),
@@ -182,7 +187,7 @@ function formatWorks(works) {
 function formatTodos(todos) {
     if (todos.length === 0)
         return "No todos found.";
-    return todos.map((todo) => `${todo.taskId} [${todo.status}] ${todo.taskName} · ${formatCompletion(taskCompletion(todo))} · Time: ${formatTime(taskTime(todo))}${todo.workingSince === undefined ? "" : " (running)"}\nWork: ${todo.workId}\nTask info:\n${todo.taskInfo}`).join("\n\n");
+    return todos.map((todo) => `${todo.taskId} [${todo.status}] ${todo.taskName} · ${formatCompletion(taskCompletion(todo))} · Time: ${formatTime(taskTime(todo))}${todo.workingSince === undefined ? "" : " (running)"}\nWork: ${todo.workId}${todo.status === "blocked" ? `\nBlocked reason: ${todo.blockedReason ?? "No reason recorded."}` : ""}\nTask info:\n${todo.taskInfo}`).join("\n\n");
 }
 function bounded(text) {
     const result = truncateHead(text, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });

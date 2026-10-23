@@ -149,12 +149,13 @@ export class TaskState {
         this.record({ version: 1, type: "work-deleted", at: Date.now(), workId });
         return true;
     }
-    createTodo(workId, taskName, taskInfo, status = "active", completionPercent) {
+    createTodo(workId, taskName, taskInfo, status = "active", completionPercent, blockedReason) {
         if (!this.works.has(workId))
             throw new Error(`Work ${workId} not found.`);
         if (this.todos.size >= MAX_TODOS)
             throw new Error(`Maximum of ${MAX_TODOS} todos reached.`);
         validateCompletion(status, completionPercent);
+        const reason = normalizeBlockedReason(status, blockedReason, undefined);
         const now = Date.now();
         const todo = {
             taskId: `T${this.nextTaskId}`,
@@ -162,6 +163,7 @@ export class TaskState {
             taskName: requiredName(taskName, "taskName"),
             taskInfo: requiredText(taskInfo, "taskInfo"),
             status,
+            blockedReason: reason,
             completionPercent: status === "completed" ? 100 : completionPercent ?? null,
             elapsedMs: 0,
             createdAt: now,
@@ -174,11 +176,14 @@ export class TaskState {
         const current = this.todos.get(taskId);
         if (!current)
             throw new Error(`Todo ${taskId} not found.`);
-        validateCompletion(patch.status ?? current.status, patch.completionPercent);
+        const status = patch.status ?? current.status;
+        validateCompletion(status, patch.completionPercent);
+        const blockedReason = normalizeBlockedReason(status, patch.blockedReason, current);
         const normalized = compactPatch({
             taskName: patch.taskName === undefined ? undefined : requiredName(patch.taskName, "taskName"),
             taskInfo: patch.taskInfo === undefined ? undefined : requiredText(patch.taskInfo, "taskInfo"),
             status: patch.status,
+            blockedReason: patch.blockedReason !== undefined || status !== current.status ? blockedReason : undefined,
             completionPercent: patch.completionPercent,
         });
         if (Object.keys(normalized).length === 0 && patch.working === undefined)
@@ -251,6 +256,7 @@ export class TaskState {
                     this.todos.set(event.todo.taskId, {
                         ...event.todo,
                         status,
+                        blockedReason: status === "blocked" ? restoredReason(event.todo.blockedReason) : null,
                         taskName: safeSingleLine(event.todo.taskName),
                         completionPercent: taskCompletion(event.todo),
                         elapsedMs: validElapsed(event.todo.elapsedMs) ? event.todo.elapsedMs : null,
@@ -271,7 +277,13 @@ export class TaskState {
                         ...(event.patch.completionPercent !== undefined ? { completionPercent: event.patch.completionPercent } : {}),
                         updatedAt: event.at,
                     };
-                    this.todos.set(event.taskId, { ...updated, completionPercent: taskCompletion(updated) });
+                    this.todos.set(event.taskId, {
+                        ...updated,
+                        blockedReason: updated.status === "blocked"
+                            ? event.patch.blockedReason !== undefined ? restoredReason(event.patch.blockedReason) : todo.status === "blocked" ? todo.blockedReason : null
+                            : null,
+                        completionPercent: taskCompletion(updated),
+                    });
                 }
                 break;
             }
@@ -286,6 +298,24 @@ export class TaskState {
                 break;
         }
     }
+}
+function restoredReason(value) {
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function normalizeBlockedReason(status, supplied, current) {
+    if (status !== "blocked") {
+        if (supplied !== undefined && supplied !== null)
+            throw new Error("blockedReason is only valid for blocked tasks.");
+        return null;
+    }
+    if (supplied === undefined && current?.status === "blocked")
+        return current.blockedReason ?? null;
+    if (typeof supplied !== "string" || !supplied.trim())
+        throw new Error("Blocked tasks require a nonempty blockedReason explaining the obstacle and what will allow work to resume.");
+    const reason = supplied.trim();
+    if (reason.length > 10_000)
+        throw new Error("blockedReason must not exceed 10000 characters.");
+    return reason;
 }
 function validElapsed(value) {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;

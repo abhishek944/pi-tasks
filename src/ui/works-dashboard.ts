@@ -61,6 +61,7 @@ export class WorksDashboard implements Component, Focusable {
     private readonly cwd: string,
     private readonly git: GitStatusCache,
     private readonly notify: (message: string, type: "error") => void,
+    private readonly getOpenCommand: () => string[],
   ) {
     this.unsubscribeGit = git.subscribe(() => tui.requestRender());
     this.refreshTimer = setInterval(() => {
@@ -147,7 +148,7 @@ export class WorksDashboard implements Component, Focusable {
       return;
     }
     if (matchesKey(data, "o")) {
-      void this.openInCursor();
+      void this.openDirectory();
       return;
     }
     if (matchesKey(data, "m")) {
@@ -222,7 +223,7 @@ export class WorksDashboard implements Component, Focusable {
       return { handled: true, focus: true, render: true };
     }
     if (this.isHit(event.x, this.openHitRegion)) {
-      void this.openInCursor();
+      void this.openDirectory();
       return { handled: true, focus: true, render: true };
     }
     return undefined;
@@ -415,19 +416,19 @@ export class WorksDashboard implements Component, Focusable {
     }
   }
 
-  private async openInCursor(): Promise<void> {
+  private async openDirectory(): Promise<void> {
     if (this.opening) return;
     this.opening = true;
-    this.message = "Opening repository in Cursor…";
+    this.message = "Opening repository…";
     this.messageColor = "warning";
     this.tui.requestRender();
     try {
-      await openRepository(this.cwd);
-      this.message = "Opened repository in Cursor.";
+      await openRepository(this.cwd, this.getOpenCommand());
+      this.message = "Opened repository.";
       this.messageColor = "success";
     } catch (error) {
       const reason = error instanceof Error ? ` ${safeSingleLine(error.message)}` : "";
-      this.message = `Could not open Cursor. Check cursor is on PATH.${reason}`;
+      this.message = `Could not open repository. Check pi-tasks.openCommand and that its executable is installed on PATH.${reason}`;
       this.messageColor = "error";
       if (!this.disposed) this.notify(this.message, "error");
     } finally {
@@ -460,7 +461,7 @@ export class WorksDashboard implements Component, Focusable {
   }
 
   private renderFooter(width: number): string {
-    const text = "↑/↓ select · Enter details · Esc close · C copy · O Cursor · D delegate · M minimize";
+    const text = "↑/↓ select · Enter details · Esc close · C copy · O open · D delegate · M minimize";
     return truncateToWidth(this.theme.fg("muted", text), width, "");
   }
 }

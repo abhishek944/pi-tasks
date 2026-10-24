@@ -4,7 +4,7 @@ import type { TaskState } from "./state.js";
 import { runWorksOverlay } from "./ui/overlay.js";
 import { WorksDashboard } from "./ui/works-dashboard.js";
 
-export function registerWorksCommand(pi: ExtensionAPI, state: TaskState, git: GitStatusCache): void {
+export function registerWorksCommand(pi: ExtensionAPI, state: TaskState, git: GitStatusCache, getOpenCommand: () => string[]): void {
   let closeActiveDashboard: (() => void) | undefined;
 
   pi.on("session_start", () => {
@@ -34,7 +34,7 @@ export function registerWorksCommand(pi: ExtensionAPI, state: TaskState, git: Gi
           };
           commandClose = closeCurrent;
           closeActiveDashboard = closeCurrent;
-          return new WorksDashboard(tui, theme, keybindings, state, closeCurrent, ctx.cwd, git, (message, type) => ctx.ui.notify(message, type));
+          return new WorksDashboard(tui, theme, keybindings, state, closeCurrent, ctx.cwd, git, (message, type) => ctx.ui.notify(message, type), getOpenCommand);
         });
       } catch (error) {
         ctx.ui.notify(error instanceof Error ? error.message : "The works dashboard could not be opened.", "error");

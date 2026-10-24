@@ -34,7 +34,7 @@ export class TasksPanelHost {
   private cwd = "";
   private sessionId = "Session unavailable";
 
-  constructor(private readonly state: TaskState, private readonly git: GitStatusCache) {}
+  constructor(private readonly state: TaskState, private readonly git: GitStatusCache, private readonly getOpenCommand: () => string[]) {}
 
   attach(ui: ExtensionUIContext, cwd: string, sessionId: string): void {
     this.hideCurrent();
@@ -92,6 +92,7 @@ export class TasksPanelHost {
           this.cwd,
           this.git,
           this.sessionId,
+          this.getOpenCommand,
         );
         return this.panel;
       });
@@ -113,6 +114,7 @@ export class TasksPanelHost {
         this.cwd,
         this.git,
         this.sessionId,
+        this.getOpenCommand,
       );
       this.handle = tui.showOverlay(this.panel, {
         anchor: "top-right",
@@ -170,6 +172,7 @@ class TasksPanel implements Component {
     private readonly cwd: string,
     private readonly git: GitStatusCache,
     private readonly sessionId: string,
+    private readonly getOpenCommand: () => string[],
   ) {}
 
   render(width: number): string[] {
@@ -268,11 +271,11 @@ class TasksPanel implements Component {
         return { handled: true, render: true };
       }
       if (this.isHit(event.x, this.sessionHitRegion)) {
-        void this.openInCursor(true);
+        void this.openDirectory(true);
         return { handled: true, render: true };
       }
       if (this.isHit(event.x, this.openHitRegion)) {
-        void this.openInCursor();
+        void this.openDirectory();
         return { handled: true, render: true };
       }
     }
@@ -359,17 +362,18 @@ class TasksPanel implements Component {
     }
   }
 
-  private async openInCursor(session = false): Promise<void> {
+  private async openDirectory(session = false): Promise<void> {
     if (this.opening) return;
     this.opening = true;
     this.tui.requestRender();
     try {
-      if (session) await openSession(this.cwd, this.sessionId);
-      else await openRepository(this.cwd);
-      if (!this.disposed) this.notify(session ? "Opened session artifacts in Cursor." : "Opened repository in Cursor.", "info");
+      const command = this.getOpenCommand();
+      if (session) await openSession(this.cwd, this.sessionId, command);
+      else await openRepository(this.cwd, command);
+      if (!this.disposed) this.notify(session ? "Opened session artifacts." : "Opened repository.", "info");
     } catch (error) {
       const reason = error instanceof Error ? ` ${safeSingleLine(error.message)}` : "";
-      if (!this.disposed) this.notify(session ? `Could not open session artifacts in Cursor.${reason}` : `Could not open Cursor. Check that cursor is installed on PATH.${reason}`, "error");
+      if (!this.disposed) this.notify(`Could not open ${session ? "session artifacts" : "repository"}. Check pi-tasks.openCommand and that its executable is installed on PATH.${reason}`, "error");
     } finally {
       this.opening = false;
       if (!this.disposed) this.tui.requestRender();

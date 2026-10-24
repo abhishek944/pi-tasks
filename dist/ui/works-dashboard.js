@@ -17,6 +17,7 @@ export class WorksDashboard {
     cwd;
     git;
     notify;
+    getOpenCommand;
     focused = false;
     selectedKey;
     scrollOffset = 0;
@@ -38,7 +39,7 @@ export class WorksDashboard {
     toggleHitRegion;
     disposed = false;
     refreshTimer;
-    constructor(tui, theme, keybindings, state, close, cwd, git, notify) {
+    constructor(tui, theme, keybindings, state, close, cwd, git, notify, getOpenCommand) {
         this.tui = tui;
         this.theme = theme;
         this.keybindings = keybindings;
@@ -47,6 +48,7 @@ export class WorksDashboard {
         this.cwd = cwd;
         this.git = git;
         this.notify = notify;
+        this.getOpenCommand = getOpenCommand;
         this.unsubscribeGit = git.subscribe(() => tui.requestRender());
         this.refreshTimer = setInterval(() => {
             if (!this.disposed)
@@ -140,7 +142,7 @@ export class WorksDashboard {
             return;
         }
         if (matchesKey(data, "o")) {
-            void this.openInCursor();
+            void this.openDirectory();
             return;
         }
         if (matchesKey(data, "m")) {
@@ -225,7 +227,7 @@ export class WorksDashboard {
             return { handled: true, focus: true, render: true };
         }
         if (this.isHit(event.x, this.openHitRegion)) {
-            void this.openInCursor();
+            void this.openDirectory();
             return { handled: true, focus: true, render: true };
         }
         return undefined;
@@ -418,21 +420,21 @@ export class WorksDashboard {
                 this.tui.requestRender();
         }
     }
-    async openInCursor() {
+    async openDirectory() {
         if (this.opening)
             return;
         this.opening = true;
-        this.message = "Opening repository in Cursor…";
+        this.message = "Opening repository…";
         this.messageColor = "warning";
         this.tui.requestRender();
         try {
-            await openRepository(this.cwd);
-            this.message = "Opened repository in Cursor.";
+            await openRepository(this.cwd, this.getOpenCommand());
+            this.message = "Opened repository.";
             this.messageColor = "success";
         }
         catch (error) {
             const reason = error instanceof Error ? ` ${safeSingleLine(error.message)}` : "";
-            this.message = `Could not open Cursor. Check cursor is on PATH.${reason}`;
+            this.message = `Could not open repository. Check pi-tasks.openCommand and that its executable is installed on PATH.${reason}`;
             this.messageColor = "error";
             if (!this.disposed)
                 this.notify(this.message, "error");
@@ -469,7 +471,7 @@ export class WorksDashboard {
         }
     }
     renderFooter(width) {
-        const text = "↑/↓ select · Enter details · Esc close · C copy · O Cursor · D delegate · M minimize";
+        const text = "↑/↓ select · Enter details · Esc close · C copy · O open · D delegate · M minimize";
         return truncateToWidth(this.theme.fg("muted", text), width, "");
     }
 }

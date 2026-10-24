@@ -8,6 +8,7 @@ export declare function metricsContentWidth(width: number): number;
 export declare class TasksPanelHost {
     private readonly state;
     private readonly git;
+    private readonly getOpenCommand;
     private tui;
     private panel;
     private handle;
@@ -16,7 +17,7 @@ export declare class TasksPanelHost {
     private minimized;
     private cwd;
     private sessionId;
-    constructor(state: TaskState, git: GitStatusCache);
+    constructor(state: TaskState, git: GitStatusCache, getOpenCommand: () => string[]);
     attach(ui: ExtensionUIContext, cwd: string, sessionId: string): void;
     setMode(mode: TasksPanelMode): void;
     getMode(): TasksPanelMode;

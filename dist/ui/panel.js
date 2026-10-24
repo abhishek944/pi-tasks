@@ -18,6 +18,7 @@ export function metricsContentWidth(width) {
 export class TasksPanelHost {
     state;
     git;
+    getOpenCommand;
     tui;
     panel;
     handle;
@@ -26,9 +27,10 @@ export class TasksPanelHost {
     minimized = false;
     cwd = "";
     sessionId = "Session unavailable";
-    constructor(state, git) {
+    constructor(state, git, getOpenCommand) {
         this.state = state;
         this.git = git;
+        this.getOpenCommand = getOpenCommand;
     }
     attach(ui, cwd, sessionId) {
         this.hideCurrent();
@@ -71,7 +73,7 @@ export class TasksPanelHost {
                 this.tui = tui;
                 this.panel = new TasksPanel(tui, this.state, theme, "widget", this.minimized, (minimized) => {
                     this.minimized = minimized;
-                }, (message, type) => ui.notify(message, type), this.cwd, this.git, this.sessionId);
+                }, (message, type) => ui.notify(message, type), this.cwd, this.git, this.sessionId, this.getOpenCommand);
                 return this.panel;
             });
             return;
@@ -80,7 +82,7 @@ export class TasksPanelHost {
             this.tui = tui;
             this.panel = new TasksPanel(tui, this.state, theme, "floating", this.minimized, (minimized) => {
                 this.minimized = minimized;
-            }, (message, type) => ui.notify(message, type), this.cwd, this.git, this.sessionId);
+            }, (message, type) => ui.notify(message, type), this.cwd, this.git, this.sessionId, this.getOpenCommand);
             this.handle = tui.showOverlay(this.panel, {
                 anchor: "top-right",
                 width: "42%",
@@ -118,6 +120,7 @@ class TasksPanel {
     cwd;
     git;
     sessionId;
+    getOpenCommand;
     scrollOffset = 0;
     pageSize = 1;
     contentLength = 0;
@@ -133,7 +136,7 @@ class TasksPanel {
     openHitRegion;
     sessionHitRegion;
     toggleHitRegion;
-    constructor(tui, state, theme, placement, minimized, onMinimizedChange, notify, cwd, git, sessionId) {
+    constructor(tui, state, theme, placement, minimized, onMinimizedChange, notify, cwd, git, sessionId, getOpenCommand) {
         this.tui = tui;
         this.state = state;
         this.theme = theme;
@@ -144,6 +147,7 @@ class TasksPanel {
         this.cwd = cwd;
         this.git = git;
         this.sessionId = sessionId;
+        this.getOpenCommand = getOpenCommand;
     }
     render(width) {
         this.delegateHits = [];
@@ -247,11 +251,11 @@ class TasksPanel {
                 return { handled: true, render: true };
             }
             if (this.isHit(event.x, this.sessionHitRegion)) {
-                void this.openInCursor(true);
+                void this.openDirectory(true);
                 return { handled: true, render: true };
             }
             if (this.isHit(event.x, this.openHitRegion)) {
-                void this.openInCursor();
+                void this.openDirectory();
                 return { handled: true, render: true };
             }
         }
@@ -341,23 +345,24 @@ class TasksPanel {
             this.openingDelegate = false;
         }
     }
-    async openInCursor(session = false) {
+    async openDirectory(session = false) {
         if (this.opening)
             return;
         this.opening = true;
         this.tui.requestRender();
         try {
+            const command = this.getOpenCommand();
             if (session)
-                await openSession(this.cwd, this.sessionId);
+                await openSession(this.cwd, this.sessionId, command);
             else
-                await openRepository(this.cwd);
+                await openRepository(this.cwd, command);
             if (!this.disposed)
-                this.notify(session ? "Opened session artifacts in Cursor." : "Opened repository in Cursor.", "info");
+                this.notify(session ? "Opened session artifacts." : "Opened repository.", "info");
         }
         catch (error) {
             const reason = error instanceof Error ? ` ${safeSingleLine(error.message)}` : "";
             if (!this.disposed)
-                this.notify(session ? `Could not open session artifacts in Cursor.${reason}` : `Could not open Cursor. Check that cursor is installed on PATH.${reason}`, "error");
+                this.notify(`Could not open ${session ? "session artifacts" : "repository"}. Check pi-tasks.openCommand and that its executable is installed on PATH.${reason}`, "error");
         }
         finally {
             this.opening = false;

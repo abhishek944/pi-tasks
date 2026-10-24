@@ -11,6 +11,7 @@ export declare class WorksDashboard implements Component, Focusable {
     private readonly cwd;
     private readonly git;
     private readonly notify;
+    private readonly getOpenCommand;
     focused: boolean;
     private selectedKey;
     private scrollOffset;
@@ -32,7 +33,7 @@ export declare class WorksDashboard implements Component, Focusable {
     private toggleHitRegion;
     private disposed;
     private readonly refreshTimer;
-    constructor(tui: TUI, theme: Theme, keybindings: KeybindingsManager, state: TaskState, close: () => void, cwd: string, git: GitStatusCache, notify: (message: string, type: "error") => void);
+    constructor(tui: TUI, theme: Theme, keybindings: KeybindingsManager, state: TaskState, close: () => void, cwd: string, git: GitStatusCache, notify: (message: string, type: "error") => void, getOpenCommand: () => string[]);
     render(width: number): string[];
     handleInput(data: string): void;
     handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined;
@@ -50,7 +51,7 @@ export declare class WorksDashboard implements Component, Focusable {
     private toggleMinimized;
     private isHit;
     private openLinkedDelegate;
-    private openInCursor;
+    private openDirectory;
     private copyAllAsMarkdown;
     private renderFooter;
 }

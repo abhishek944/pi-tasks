@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0 - 2026-10-24
+
+- Add `pi-tasks.openCommand` to choose the executable and fixed arguments used by Open and Open Session across panels, the dashboard, and command shortcuts. Keep Cursor as the default, append the target directory without a shell, and report invalid configuration visibly.
+- Use editor-neutral opening feedback and document global/trusted-project configuration for other editors.
+
 ## 0.14.0 - 2026-10-23
 
 - Add `TaskTimeExport` and `TaskTimeImport` to carry measured worker effort through assignment-specific JSON snapshots. AgentCreate prepares the shared report and export/import instructions without changing Herdr or pi-loop-monitor.

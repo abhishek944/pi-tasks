@@ -6,7 +6,7 @@ import { registerTaskAutoContinue } from "./auto-continue.js";
 import { registerWorksCommand } from "./command.js";
 import { registerDelegatedTimeTools } from "./delegated-time.js";
 import { GitStatusCache } from "./git-status.js";
-import { openRepository, openSession } from "./open-repository.js";
+import { openRepository, openSession, readOpenCommand } from "./open-repository.js";
 import { TaskState } from "./state.js";
 import { safeSingleLine } from "./text.js";
 import { registerTaskTiming } from "./timing.js";
@@ -18,7 +18,8 @@ export default function tasksExtension(pi: ExtensionAPI): void {
   let panel: TasksPanelHost | undefined;
   const state = new TaskState(pi, () => panel?.update());
   const git = new GitStatusCache();
-  panel = new TasksPanelHost(state, git);
+  const getOpenCommand = () => readOpenCommand((pi as ExtensionAPI & { getSettings?: () => unknown }).getSettings?.());
+  panel = new TasksPanelHost(state, git, getOpenCommand);
 
   registerTaskTools(pi, state);
   registerDelegatedTimeTools(pi, state);
@@ -26,7 +27,7 @@ export default function tasksExtension(pi: ExtensionAPI): void {
   registerAgentTools(pi, state);
   registerTrackingGuidance(pi);
   registerTaskAutoContinue(pi, state);
-  registerWorksCommand(pi, state, git);
+  registerWorksCommand(pi, state, git, getOpenCommand);
   pi.registerCommand("works-panel", {
     description: "Set the works panel display mode",
     handler: async (args, ctx) => {
@@ -50,12 +51,13 @@ export default function tasksExtension(pi: ExtensionAPI): void {
       }
       if (requested === "open" || requested === "open-session") {
         try {
-          if (requested === "open-session") await openSession(ctx.cwd, ctx.sessionManager.getSessionId());
-          else await openRepository(ctx.cwd);
-          ctx.ui.notify(requested === "open-session" ? "Opened session artifacts in Cursor." : "Opened repository in Cursor.", "info");
+          const command = getOpenCommand();
+          if (requested === "open-session") await openSession(ctx.cwd, ctx.sessionManager.getSessionId(), command);
+          else await openRepository(ctx.cwd, command);
+          ctx.ui.notify(requested === "open-session" ? "Opened session artifacts." : "Opened repository.", "info");
         } catch (error) {
           const reason = error instanceof Error ? ` ${safeSingleLine(error.message)}` : "";
-          ctx.ui.notify(`Could not open Cursor. Check cursor is on PATH.${reason}`, "error");
+          ctx.ui.notify(`Could not open directory. Check pi-tasks.openCommand and that its executable is installed on PATH.${reason}`, "error");
         }
         return;
       }

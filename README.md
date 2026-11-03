@@ -1,3 +1,6 @@
+> **Moved to Astack**
+> This repository is archived and read-only. Development is maintained in the [Astack monorepo](https://github.com/abhishek944/astack); see [packages/pi-tasks](https://github.com/abhishek944/astack/tree/main/packages/pi-tasks).
+
 # pi-tasks
 
 A Pi extension for session-scoped work and todo tracking.
